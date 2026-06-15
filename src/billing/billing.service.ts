@@ -210,10 +210,10 @@ export class BillingService {
     );
     const successUrl = needsPlanSelection
       ? `${frontendUrl}/choose-plan/checkout/success?session_id={CHECKOUT_SESSION_ID}`
-      : `${frontendUrl}/app/settings?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
+      : `${frontendUrl}/settings?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = needsPlanSelection
       ? `${frontendUrl}/choose-plan/checkout/cancel`
-      : `${frontendUrl}/app/settings?checkout=cancel`;
+      : `${frontendUrl}/settings?checkout=cancel`;
 
     const session = await this.stripeService.client.checkout.sessions.create({
       mode: 'subscription',

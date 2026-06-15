@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  Logger,
   Post,
   Req,
   UseGuards,
@@ -84,6 +85,8 @@ export class BillingController {
 
 @Controller('billing/webhooks')
 export class BillingWebhookController {
+  private readonly logger = new Logger(BillingWebhookController.name);
+
   constructor(
     private readonly billingService: BillingService,
     private readonly stripeService: StripeService,
@@ -102,10 +105,18 @@ export class BillingWebhookController {
       throw new BadRequestException('Missing raw request body.');
     }
 
-    const event = this.stripeService.constructWebhookEvent(
-      request.rawBody,
-      signature,
-    );
+    let event;
+    try {
+      event = this.stripeService.constructWebhookEvent(
+        request.rawBody,
+        signature,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Stripe webhook signature verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      throw new BadRequestException('Invalid Stripe webhook signature.');
+    }
 
     return this.billingService.handleWebhookEvent(event);
   }

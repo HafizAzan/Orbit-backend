@@ -1,7 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
-import { json, urlencoded } from 'express';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -13,7 +13,9 @@ function parseCorsOrigins(value: string): string[] {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 5000);
@@ -23,9 +25,11 @@ async function bootstrap() {
   const isProduction = configService.get<string>('NODE_ENV') === 'production';
 
   if (isProduction) {
-    const httpAdapter = app.getHttpAdapter().getInstance();
-    httpAdapter.set('trust proxy', 1);
+    app.set('trust proxy', 1);
   }
+
+  app.useBodyParser('json', { limit: '100kb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '100kb' });
 
   app.use(
     helmet({
@@ -33,9 +37,6 @@ async function bootstrap() {
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   );
-
-  app.use(json({ limit: '100kb' }));
-  app.use(urlencoded({ extended: true, limit: '100kb' }));
 
   app.enableCors({
     origin: corsOrigins,
