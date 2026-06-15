@@ -18,6 +18,7 @@ import { BillingService } from './billing.service';
 import {
   CancelPlanDto,
   ChangePlanDto,
+  ConfirmCheckoutDto,
   CreateCheckoutDto,
   RefundPaymentDto,
 } from './dto/billing.dto';
@@ -42,6 +43,18 @@ export class BillingController {
   @UseGuards(JwtAuthGuard, OrganizationBillingGuard)
   createCheckout(@CurrentUser() user: JwtPayload, @Body() dto: CreateCheckoutDto) {
     return this.billingService.createCheckout(user, dto);
+  }
+
+  @Post('checkout/confirm')
+  @UseGuards(JwtAuthGuard, OrganizationBillingGuard)
+  confirmCheckout(@CurrentUser() user: JwtPayload, @Body() dto: ConfirmCheckoutDto) {
+    return this.billingService.confirmCheckout(user, dto.sessionId);
+  }
+
+  @Post('select-plan')
+  @UseGuards(JwtAuthGuard, OrganizationBillingGuard)
+  selectPlan(@CurrentUser() user: JwtPayload, @Body() dto: CreateCheckoutDto) {
+    return this.billingService.selectPlan(user, dto);
   }
 
   @Post('cancel')

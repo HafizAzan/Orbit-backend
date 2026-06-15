@@ -209,11 +209,11 @@ export class BillingService {
       organization.id,
     );
     const successUrl = needsPlanSelection
-      ? `${frontendUrl}/choose-plan?checkout=success`
-      : `${frontendUrl}/?checkout=success#pricing`;
+      ? `${frontendUrl}/choose-plan/checkout/success?session_id={CHECKOUT_SESSION_ID}`
+      : `${frontendUrl}/app/settings?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = needsPlanSelection
-      ? `${frontendUrl}/choose-plan?checkout=cancel`
-      : `${frontendUrl}/?checkout=cancel#pricing`;
+      ? `${frontendUrl}/choose-plan/checkout/cancel`
+      : `${frontendUrl}/app/settings?checkout=cancel`;
 
     const session = await this.stripeService.client.checkout.sessions.create({
       mode: 'subscription',
@@ -442,8 +442,96 @@ export class BillingService {
     return { received: true };
   }
 
+  async confirmCheckout(user: JwtPayload, sessionId: string) {
+    const { organization } = await this.resolveOrganizationBillingContext(user);
+
+    const session =
+      await this.stripeService.client.checkout.sessions.retrieve(sessionId);
+
+    const organizationId = this.resolveCheckoutOrganizationId(session);
+
+    if (!organizationId || organizationId !== organization.id) {
+      throw new ForbiddenException(
+        'Checkout session does not belong to this organization.',
+      );
+    }
+
+    if (session.status !== 'complete') {
+      throw new BadRequestException(
+        'Checkout is not complete yet. Please try again in a moment.',
+      );
+    }
+
+    await this.handleCheckoutCompleted(session);
+
+    return {
+      message: 'Plan activated successfully.',
+    };
+  }
+
+  async selectPlan(user: JwtPayload, dto: CreateCheckoutDto) {
+    const { organization, subscription } =
+      await this.resolveOrganizationBillingContext(user);
+
+    const price = await this.stripeService.client.prices.retrieve(dto.priceId, {
+      expand: ['product'],
+    });
+
+    if (!price.active) {
+      throw new BadRequestException('Selected price is not available.');
+    }
+
+    const unitAmount = price.unit_amount ?? 0;
+
+    if (unitAmount > 0) {
+      throw new BadRequestException('This plan requires checkout.');
+    }
+
+    const productRaw =
+      price.product &&
+      typeof price.product === 'object' &&
+      'id' in price.product
+        ? price.product
+        : await this.stripeService.client.products.retrieve(
+            String(price.product),
+          );
+
+    if (!productRaw || ('deleted' in productRaw && productRaw.deleted)) {
+      throw new BadRequestException('Selected product is not available.');
+    }
+
+    const product = productRaw as StripeProduct;
+
+    const dates = buildTrialSubscriptionDates();
+
+    subscription.plan = resolvePlanCodeFromProduct(product);
+    subscription.status = SubscriptionStatus.TRIAL;
+    subscription.billingCycle =
+      mapStripeIntervalToBillingCycle(price.recurring?.interval) ??
+      BillingCycle.MONTHLY;
+    subscription.amountCents = 0;
+    subscription.currency = (price.currency ?? subscription.currency).toUpperCase();
+    subscription.startedAt = dates.startedAt;
+    subscription.expiresAt = dates.expiresAt;
+    subscription.trialEndsAt = dates.trialEndsAt;
+    subscription.renewalDate = dates.renewalDate;
+    subscription.planSelectedAt = new Date();
+    await this.subscriptionRepository.save(subscription);
+
+    organization.status = OrganizationStatus.TRIAL;
+    await this.organizationRepository.save(organization);
+
+    return {
+      message: 'Starter plan activated successfully.',
+    };
+  }
+
+  private resolveCheckoutOrganizationId(session: StripeCheckoutSession) {
+    return session.metadata?.organizationId ?? session.client_reference_id ?? null;
+  }
+
   private async handleCheckoutCompleted(session: StripeCheckoutSession) {
-    const organizationId = session.metadata?.organizationId;
+    const organizationId = this.resolveCheckoutOrganizationId(session);
 
     if (!organizationId || !session.customer || !session.subscription) {
       return;

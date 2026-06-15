@@ -23,3 +23,9 @@ export class RefundPaymentDto {
   @IsString()
   invoiceId?: string;
 }
+
+export class ConfirmCheckoutDto {
+  @IsString()
+  @MinLength(3)
+  sessionId: string;
+}
