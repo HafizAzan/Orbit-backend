@@ -25,6 +25,7 @@ import {
   SubscriptionStatus,
 } from '../enum/billing.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
+import { buildTrialSubscriptionDates } from '../common/utils/billing.util';
 import { StripeService } from './stripe.service';
 import {
   mapStripeIntervalToBillingCycle,
@@ -656,6 +657,8 @@ export class BillingService {
       return subscription;
     }
 
+    const dates = buildTrialSubscriptionDates();
+
     subscription = this.subscriptionRepository.create({
       organizationId,
       plan: PlanCode.FREE,
@@ -663,7 +666,10 @@ export class BillingService {
       billingCycle: BillingCycle.MONTHLY,
       amountCents: 0,
       currency: 'USD',
-      startedAt: new Date(),
+      startedAt: dates.startedAt,
+      expiresAt: dates.expiresAt,
+      trialEndsAt: dates.trialEndsAt,
+      renewalDate: dates.renewalDate,
       planSelectedAt: null,
     });
 

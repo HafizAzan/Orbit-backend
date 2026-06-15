@@ -3,8 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
   amountToCents,
+  buildCountStatMetric,
   getDefaultAmountCents,
+  getPlanDisplayName,
   resolveSubscriptionStatusOnUpdate,
+  toStatPercentage,
 } from '../common/utils/billing.util';
 import {
   mapSubscriptionResponse,
@@ -54,18 +57,27 @@ export class SubscriptionsService {
 
   async getStats(): Promise<SubscriptionStatsResponse> {
     const subscriptions = await this.subscriptionRepository.find();
+    const total = subscriptions.length;
+
+    const activePlans = subscriptions.filter(
+      (item) => item.status === SubscriptionStatus.ACTIVE,
+    ).length;
+    const expiredPlans = subscriptions.filter(
+      (item) => item.status === SubscriptionStatus.EXPIRED,
+    ).length;
 
     const monthlyRevenue = subscriptions
       .filter((item) => item.status === SubscriptionStatus.ACTIVE)
       .reduce((sum, item) => sum + item.amountCents / 100, 0);
 
     const annualRevenue = monthlyRevenue * 12;
+    const activeRate = toStatPercentage(activePlans, total);
 
     return {
-      monthlyRevenue,
-      annualRevenue,
-      activePlans: subscriptions.filter((item) => item.status === SubscriptionStatus.ACTIVE).length,
-      expiredPlans: subscriptions.filter((item) => item.status === SubscriptionStatus.EXPIRED).length,
+      monthlyRevenue: { value: monthlyRevenue, percentage: activeRate },
+      annualRevenue: { value: annualRevenue, percentage: activeRate },
+      activePlans: buildCountStatMetric(activePlans, total),
+      expiredPlans: buildCountStatMetric(expiredPlans, total),
     };
   }
 
@@ -78,7 +90,8 @@ export class SubscriptionsService {
       const count = subscriptions.filter((item) => item.plan === plan).length;
 
       return {
-        plan,
+        code: plan,
+        name: getPlanDisplayName(plan),
         count,
         percentage: Math.round((count / total) * 100),
       };

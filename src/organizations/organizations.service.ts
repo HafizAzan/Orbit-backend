@@ -7,6 +7,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
   buildActiveSubscriptionDates,
+  buildCountStatMetric,
+  buildTotalStatMetric,
   buildTrialSubscriptionDates,
   getDefaultAmountCents,
 } from '../common/utils/billing.util';
@@ -69,12 +71,22 @@ export class OrganizationsService {
 
   async getStats(): Promise<OrganizationStatsResponse> {
     const organizations = await this.organizationRepository.find();
+    const total = organizations.length;
+    const active = organizations.filter(
+      (org) => org.status === OrganizationStatus.ACTIVE,
+    ).length;
+    const trial = organizations.filter(
+      (org) => org.status === OrganizationStatus.TRIAL,
+    ).length;
+    const suspended = organizations.filter(
+      (org) => org.status === OrganizationStatus.SUSPENDED,
+    ).length;
 
     return {
-      total: organizations.length,
-      active: organizations.filter((org) => org.status === OrganizationStatus.ACTIVE).length,
-      trial: organizations.filter((org) => org.status === OrganizationStatus.TRIAL).length,
-      suspended: organizations.filter((org) => org.status === OrganizationStatus.SUSPENDED).length,
+      total: buildTotalStatMetric(total),
+      active: buildCountStatMetric(active, total),
+      trial: buildCountStatMetric(trial, total),
+      suspended: buildCountStatMetric(suspended, total),
     };
   }
 

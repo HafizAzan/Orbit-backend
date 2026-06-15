@@ -8,9 +8,17 @@ import {
   SubscriptionStatus,
 } from '../../enum/billing.enum';
 import { RegisterAs } from '../../enum/auth.enum';
+import {
+  getPlanDisplayName,
+  resolveSubscriptionExpiresAt,
+  type StatMetric,
+} from '../utils/billing.util';
+
+export type { StatMetric };
 
 export type OrganizationPlanResponse = {
-  name: PlanCode;
+  code: PlanCode;
+  name: string;
   status: SubscriptionStatus;
   createdAt: string;
   expiresAt: string | null;
@@ -30,10 +38,10 @@ export type OrganizationResponse = {
 };
 
 export type OrganizationStatsResponse = {
-  total: number;
-  active: number;
-  trial: number;
-  suspended: number;
+  total: StatMetric;
+  active: StatMetric;
+  trial: StatMetric;
+  suspended: StatMetric;
 };
 
 export type SubscriptionResponse = {
@@ -55,14 +63,15 @@ export type SubscriptionResponse = {
 };
 
 export type SubscriptionStatsResponse = {
-  monthlyRevenue: number;
-  annualRevenue: number;
-  activePlans: number;
-  expiredPlans: number;
+  monthlyRevenue: StatMetric;
+  annualRevenue: StatMetric;
+  activePlans: StatMetric;
+  expiredPlans: StatMetric;
 };
 
 export type PlanDistributionItem = {
-  plan: PlanCode;
+  code: PlanCode;
+  name: string;
   count: number;
   percentage: number;
 };
@@ -95,9 +104,9 @@ export function mapSubscriptionResponse(
     status: subscription.status,
     currency: subscription.currency,
     startedAt: subscription.startedAt.toISOString(),
-    expiresAt: toIsoDate(subscription.expiresAt),
+    expiresAt: resolveSubscriptionExpiresAt(subscription),
     cancelledAt: toIsoDate(subscription.cancelledAt),
-    trialEndsAt: toIsoDate(subscription.trialEndsAt),
+    trialEndsAt: toIsoDate(subscription.trialEndsAt) ?? resolveSubscriptionExpiresAt(subscription),
     createdAt: subscription.createdAt.toISOString(),
   };
 }
@@ -112,6 +121,7 @@ export function mapOrganizationResponse(
     owner ??
     organization.users?.find((user) => user.role === RegisterAs.OWNER) ??
     null;
+  const planCode = subscription?.plan ?? PlanCode.FREE;
 
   return {
     id: organization.id,
@@ -120,10 +130,13 @@ export function mapOrganizationResponse(
     ownerName: ownerUser?.fullName ?? '—',
     ownerEmail: ownerUser?.email ?? organization.billingEmail ?? '—',
     plan: {
-      name: subscription?.plan ?? PlanCode.FREE,
+      code: planCode,
+      name: getPlanDisplayName(planCode),
       status: subscription?.status ?? SubscriptionStatus.TRIAL,
-      createdAt: subscription?.createdAt.toISOString() ?? organization.createdAt.toISOString(),
-      expiresAt: toIsoDate(subscription?.expiresAt ?? null),
+      createdAt:
+        subscription?.createdAt.toISOString() ??
+        organization.createdAt.toISOString(),
+      expiresAt: resolveSubscriptionExpiresAt(subscription),
     },
     users: usersCount,
     projects: organization.projectCount,

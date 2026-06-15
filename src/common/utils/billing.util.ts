@@ -45,6 +45,84 @@ export function buildTrialSubscriptionDates(startedAt = new Date()) {
   };
 }
 
+export function getPlanDisplayName(plan: PlanCode) {
+  switch (plan) {
+    case PlanCode.FREE:
+      return 'Starter';
+    case PlanCode.PRO:
+      return 'Pro';
+    case PlanCode.BUSINESS:
+      return 'Business';
+    case PlanCode.ENTERPRISE:
+      return 'Enterprise';
+    default:
+      return plan;
+  }
+}
+
+type SubscriptionExpirySource = {
+  expiresAt?: Date | null;
+  trialEndsAt?: Date | null;
+  status?: SubscriptionStatus;
+  startedAt?: Date | null;
+  createdAt?: Date | null;
+};
+
+export function resolveSubscriptionExpiresAt(
+  subscription?: SubscriptionExpirySource | null,
+) {
+  if (!subscription) {
+    return null;
+  }
+
+  const directExpiry = subscription.expiresAt ?? subscription.trialEndsAt;
+  if (directExpiry) {
+    return directExpiry.toISOString();
+  }
+
+  if (subscription.status !== SubscriptionStatus.TRIAL) {
+    return null;
+  }
+
+  const trialStart =
+    subscription.startedAt ??
+    subscription.createdAt ??
+    null;
+
+  if (!trialStart) {
+    return null;
+  }
+
+  return addDays(trialStart, TRIAL_DURATION_DAYS).toISOString();
+}
+
+export type StatMetric = {
+  value: number;
+  percentage: number;
+};
+
+export function toStatPercentage(value: number, total: number) {
+  if (total <= 0) {
+    return 0;
+  }
+
+  return Math.round((value / total) * 100);
+}
+
+export function buildCountStatMetric(value: number, total: number): StatMetric {
+  return {
+    value,
+    percentage: toStatPercentage(value, total),
+  };
+}
+
+export function buildTotalStatMetric(total: number): StatMetric {
+  return {
+    value: total,
+    percentage: total > 0 ? 100 : 0,
+  };
+}
+
 export function buildActiveSubscriptionDates(
   billingCycle: BillingCycle,
   startedAt = new Date(),
