@@ -15,8 +15,15 @@ export const envValidationSchema = Joi.object({
 
   JWT_SECRET: Joi.string().min(32).required(),
   JWT_EXPIRES_IN: Joi.string().default('7d'),
-  RESEND_API_KEY: Joi.string().required(),
-  EMAIL_FROM: Joi.string().default('FlowSync <onboarding@resend.dev>'),
+  SMTP_HOST: Joi.string().hostname().required(),
+  SMTP_PORT: Joi.number().port().default(587),
+  SMTP_USER: Joi.string().email().required(),
+  SMTP_PASSWORD: Joi.string().required(),
+  EMAIL_FROM: Joi.string().required(),
+  FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
+  STRIPE_SECRET_KEY: Joi.string().required(),
+  STRIPE_WEBHOOK_SECRET: Joi.string().required(),
+  STRIPE_REFUND_WINDOW_DAYS: Joi.number().integer().min(1).max(90).default(7),
   CORS_ORIGIN: Joi.string()
     .required()
     .custom((value, helpers) => {

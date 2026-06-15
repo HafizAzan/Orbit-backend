@@ -1,11 +1,14 @@
+import { OrganizationStatus } from '../enum/billing.enum';
 import {
   Column,
   CreateDateColumn,
   Entity,
   OneToMany,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Subscription } from './subscription.entity';
 import { User } from './user.entity';
 
 @Entity('organizations')
@@ -19,8 +22,24 @@ export class Organization {
   @Column({ length: 120, unique: true })
   slug: string;
 
+  @Column({
+    type: 'enum',
+    enum: OrganizationStatus,
+    default: OrganizationStatus.TRIAL,
+  })
+  status: OrganizationStatus;
+
+  @Column({ name: 'billing_email', type: 'varchar', length: 255, nullable: true })
+  billingEmail: string | null;
+
+  @Column({ name: 'project_count', type: 'integer', default: 0 })
+  projectCount: number;
+
   @OneToMany(() => User, (user) => user.organization)
   users: User[];
+
+  @OneToOne(() => Subscription, (subscription) => subscription.organization)
+  subscription: Subscription | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

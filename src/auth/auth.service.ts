@@ -11,12 +11,17 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
+import { createHash, randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
+import { ForgotPasswordDto } from '../dto/forgot-password.dto';
 import { RegisterDto } from '../dto/register.dto';
 import { LoginDto } from '../dto/login.dto';
+import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { VerifyRegisterDto } from '../dto/verify-register.dto';
 import { Organization } from '../entities/organization.entity';
+import { PasswordReset } from '../entities/password-reset.entity';
 import { PendingRegistration } from '../entities/pending-registration.entity';
+import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
 import {
   AccountStatus,
@@ -28,8 +33,13 @@ import {
 import { RegisterRateLimitService } from './rate-limit/register-rate-limit.service';
 import type { JwtPayload } from './jwt/jwt-payload.type';
 import { EmailService } from '../email/email.service';
+import { OrganizationStatus } from '../enum/billing.enum';
+import { OrganizationsService } from '../organizations/organizations.service';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+const FORGOT_PASSWORD_MESSAGE =
+  'If an account exists for this email, a password reset link has been sent.';
 
 export type AuthUserResponse = {
   id: string;
@@ -43,6 +53,7 @@ export type AuthUserResponse = {
     id: string;
     name: string;
   } | null;
+  requiresPlanSelection: boolean;
 };
 
 export type AuthSessionResponse = {
@@ -58,12 +69,17 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly registerRateLimitService: RegisterRateLimitService,
     private readonly emailService: EmailService,
+    private readonly organizationsService: OrganizationsService,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     @InjectRepository(Organization)
     private readonly organizationRepository: Repository<Organization>,
     @InjectRepository(PendingRegistration)
     private readonly pendingRegistrationRepository: Repository<PendingRegistration>,
+    @InjectRepository(Subscription)
+    private readonly subscriptionRepository: Repository<Subscription>,
+    @InjectRepository(PasswordReset)
+    private readonly passwordResetRepository: Repository<PasswordReset>,
   ) {}
 
   async sendRegisterOtp(dto: RegisterDto, ip: string) {
@@ -130,13 +146,10 @@ export class AuthService {
 
     this.registerRateLimitService.recordAttempt(ip);
 
-    const isDev = this.configService.get<string>('NODE_ENV') !== 'production';
-
     return {
       message: `Verification code sent to ${email}`,
       email,
       expiresAt: expiresAt.toISOString(),
-      ...(isDev ? { devOtp: otp } : {}),
     };
   }
 
@@ -195,13 +208,10 @@ export class AuthService {
       otp,
     });
 
-    const isDev = this.configService.get<string>('NODE_ENV') !== 'production';
-
     return {
       message: `A new verification code was sent to ${normalizedEmail}`,
       email: normalizedEmail,
       expiresAt: expiresAt.toISOString(),
-      ...(isDev ? { devOtp: otp } : {}),
     };
   }
 
@@ -240,6 +250,9 @@ export class AuthService {
       this.organizationRepository.create({
         name: pending.organizationName,
         slug: pending.organizationSlug,
+        status: OrganizationStatus.TRIAL,
+        billingEmail: pending.email,
+        projectCount: 0,
       }),
     );
 
@@ -263,7 +276,7 @@ export class AuthService {
     return {
       message: `${organization.name} created successfully. You are now the organization owner.`,
       accessToken: this.signAccessToken(user),
-      user: this.toAuthUserResponse(user, organization),
+      user: await this.toAuthUserResponse(user, organization),
     };
   }
 
@@ -309,7 +322,81 @@ export class AuthService {
     return {
       message: `Welcome back, ${user.fullName}.`,
       accessToken: this.signAccessToken(user),
-      user: this.toAuthUserResponse(user, user.organization),
+      user: await this.toAuthUserResponse(user, user.organization),
+    };
+  }
+
+  async logout() {
+    return {
+      message: 'Logged out successfully.',
+    };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const email = dto.email.trim().toLowerCase();
+    const user = await this.userRepository.findOne({ where: { email } });
+
+    if (!user?.passwordHash) {
+      return { message: FORGOT_PASSWORD_MESSAGE, email };
+    }
+
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = this.hashResetToken(rawToken);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+
+    await this.passwordResetRepository.delete({ email });
+    await this.passwordResetRepository.save(
+      this.passwordResetRepository.create({
+        email,
+        tokenHash,
+        expiresAt,
+      }),
+    );
+
+    const frontendUrl = this.configService.get<string>(
+      'FRONTEND_URL',
+      'http://localhost:5173',
+    );
+    const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
+
+    await this.emailService.sendPasswordResetEmail({
+      to: email,
+      fullName: user.fullName,
+      resetUrl,
+    });
+
+    return {
+      message: FORGOT_PASSWORD_MESSAGE,
+      email,
+    };
+  }
+
+  async validateResetToken(token: string) {
+    const reset = await this.findValidPasswordReset(token);
+
+    return {
+      email: reset.email,
+      expiresAt: reset.expiresAt.toISOString(),
+      isValid: true,
+    };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const reset = await this.findValidPasswordReset(dto.token);
+    const email = reset.email;
+
+    const user = await this.userRepository.findOne({ where: { email } });
+    if (!user) {
+      await this.passwordResetRepository.delete({ email });
+      throw new BadRequestException('Invalid or expired reset link.');
+    }
+
+    const passwordHash = await argon2.hash(dto.password);
+    await this.userRepository.update(user.id, { passwordHash });
+    await this.passwordResetRepository.delete({ email });
+
+    return {
+      message: 'Password updated successfully. Please log in.',
     };
   }
 
@@ -324,6 +411,26 @@ export class AuthService {
     }
 
     return this.toAuthUserResponse(user, user.organization);
+  }
+
+  async resolveRequiresPlanSelection(user: User): Promise<boolean> {
+    if (!user.organizationId) {
+      return false;
+    }
+
+    if (user.role !== RegisterAs.OWNER && user.role !== RegisterAs.ADMIN) {
+      return false;
+    }
+
+    const subscription = await this.subscriptionRepository.findOne({
+      where: { organizationId: user.organizationId },
+    });
+
+    if (!subscription) {
+      return true;
+    }
+
+    return subscription.planSelectedAt == null;
   }
 
   private async handleLoginWithoutUser(
@@ -366,6 +473,27 @@ export class AuthService {
     );
   }
 
+  private hashResetToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private async findValidPasswordReset(token: string) {
+    const tokenHash = this.hashResetToken(token.trim());
+    const reset = await this.passwordResetRepository.findOne({
+      where: { tokenHash },
+    });
+
+    if (!reset || reset.expiresAt.getTime() < Date.now()) {
+      if (reset) {
+        await this.passwordResetRepository.delete({ email: reset.email });
+      }
+
+      throw new BadRequestException('Invalid or expired reset link.');
+    }
+
+    return reset;
+  }
+
   private signAccessToken(user: User): string {
     const payload: JwtPayload = {
       sub: user.id,
@@ -382,10 +510,10 @@ export class AuthService {
     return String(Math.floor(100000 + Math.random() * 900000));
   }
 
-  private toAuthUserResponse(
+  private async toAuthUserResponse(
     user: User,
     organization: Organization | null,
-  ): AuthUserResponse {
+  ): Promise<AuthUserResponse> {
     return {
       id: user.id,
       name: user.fullName,
@@ -400,6 +528,7 @@ export class AuthService {
             name: organization.name,
           }
         : null,
+      requiresPlanSelection: await this.resolveRequiresPlanSelection(user),
     };
   }
 }

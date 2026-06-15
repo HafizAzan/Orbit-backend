@@ -1,22 +1,29 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Organization } from '../entities/organization.entity';
+import { PasswordReset } from '../entities/password-reset.entity';
 import { PendingRegistration } from '../entities/pending-registration.entity';
+import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
 import { EmailModule } from '../email/email.module';
+import { OrganizationsModule } from '../organizations/organizations.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt/jwt.strategy';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { OrganizationBillingGuard } from './guards/organization-billing.guard';
+import { PlatformAdminGuard } from './guards/platform-admin.guard';
 import { RegisterRateLimitGuard } from './rate-limit/register-rate-limit.guard';
 import { RegisterRateLimitService } from './rate-limit/register-rate-limit.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Organization, PendingRegistration]),
+    TypeOrmModule.forFeature([User, Organization, PendingRegistration, PasswordReset, Subscription]),
     EmailModule,
+    forwardRef(() => OrganizationsModule),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -40,9 +47,20 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
   providers: [
     AuthService,
     JwtStrategy,
+    JwtAuthGuard,
+    OrganizationBillingGuard,
+    PlatformAdminGuard,
     RegisterRateLimitService,
     RegisterRateLimitGuard,
   ],
-  exports: [RegisterRateLimitService, RegisterRateLimitGuard, JwtModule],
+  exports: [
+    RegisterRateLimitService,
+    RegisterRateLimitGuard,
+    JwtModule,
+    PassportModule,
+    JwtAuthGuard,
+    OrganizationBillingGuard,
+    PlatformAdminGuard,
+  ],
 })
 export class AuthModule {}

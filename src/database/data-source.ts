@@ -5,7 +5,9 @@ import {
   parseDatabaseConfig,
 } from '../config/database';
 import { Organization } from '../entities/organization.entity';
+import { PasswordReset } from '../entities/password-reset.entity';
 import { PendingRegistration } from '../entities/pending-registration.entity';
+import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
 
 function loadEnvFiles() {
@@ -24,6 +26,6 @@ export function createSeedDataSource(): DataSource {
 
   return new DataSource({
     ...baseOptions,
-    entities: [User, Organization, PendingRegistration],
+    entities: [User, Organization, Subscription, PendingRegistration, PasswordReset],
   });
 }

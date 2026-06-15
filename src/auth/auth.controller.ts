@@ -1,10 +1,13 @@
 import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { getClientIp } from '../common/utils/get-client-ip.util';
+import { ForgotPasswordDto } from '../dto/forgot-password.dto';
 import { RegisterDto } from '../dto/register.dto';
 import { LoginDto } from '../dto/login.dto';
 import { RegisterPendingQueryDto } from '../dto/register-pending-query.dto';
 import { ResendRegisterOtpDto } from '../dto/resend-register-otp.dto';
+import { ResetPasswordDto } from '../dto/reset-password.dto';
+import { ValidateResetTokenQueryDto } from '../dto/validate-reset-token-query.dto';
 import { VerifyRegisterDto } from '../dto/verify-register.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthService } from './auth.service';
@@ -41,6 +44,27 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  logout() {
+    return this.authService.logout();
+  }
+
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  @Get('reset-password/validate')
+  validateResetToken(@Query() query: ValidateResetTokenQueryDto) {
+    return this.authService.validateResetToken(query.token);
+  }
+
+  @Post('reset-password')
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
   }
 
   @Get('me')

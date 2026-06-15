@@ -12,6 +12,9 @@ import databaseConfig, {
 } from './config/database';
 import { envValidationSchema } from './config/env.validation';
 import { AuthModule } from './auth/auth.module';
+import { OrganizationsModule } from './organizations/organizations.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { BillingModule } from './billing/billing.module';
 
 // module decorator
 @Module({
@@ -40,6 +43,9 @@ import { AuthModule } from './auth/auth.module';
     ]),
 
     AuthModule,
+    OrganizationsModule,
+    SubscriptionsModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [
