@@ -38,6 +38,8 @@ import { OrganizationsService } from '../organizations/organizations.service';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+const JWT_REMEMBER_EXPIRES_IN = '15d';
+const JWT_SESSION_EXPIRES_IN = '8h';
 const FORGOT_PASSWORD_MESSAGE =
   'If an account exists for this email, a password reset link has been sent.';
 
@@ -275,7 +277,7 @@ export class AuthService {
 
     return {
       message: `${organization.name} created successfully. You are now the organization owner.`,
-      accessToken: this.signAccessToken(user),
+      accessToken: this.signAccessToken(user, false),
       user: await this.toAuthUserResponse(user, organization),
     };
   }
@@ -319,9 +321,11 @@ export class AuthService {
       );
     }
 
+    const remember = dto.remember === true;
+
     return {
       message: `Welcome back, ${user.fullName}.`,
-      accessToken: this.signAccessToken(user),
+      accessToken: this.signAccessToken(user, remember),
       user: await this.toAuthUserResponse(user, user.organization),
     };
   }
@@ -494,7 +498,7 @@ export class AuthService {
     return reset;
   }
 
-  private signAccessToken(user: User): string {
+  private signAccessToken(user: User, remember = false): string {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -503,7 +507,11 @@ export class AuthService {
       organizationId: user.organizationId,
     };
 
-    return this.jwtService.sign(payload);
+    const expiresIn = remember
+      ? this.configService.get<string>('JWT_REMEMBER_EXPIRES_IN', JWT_REMEMBER_EXPIRES_IN)
+      : this.configService.get<string>('JWT_SESSION_EXPIRES_IN', JWT_SESSION_EXPIRES_IN);
+
+    return this.jwtService.sign(payload, { expiresIn: expiresIn as never });
   }
 
   private generateOtpCode(): string {
