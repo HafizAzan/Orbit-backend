@@ -9,6 +9,8 @@ import { ResendRegisterOtpDto } from '../dto/resend-register-otp.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { ValidateResetTokenQueryDto } from '../dto/validate-reset-token-query.dto';
 import { VerifyRegisterDto } from '../dto/verify-register.dto';
+import { ValidateInviteTokenQueryDto } from '../dto/validate-invite-token-query.dto';
+import { AcceptInviteDto } from '../dto/accept-invite.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -65,6 +67,16 @@ export class AuthController {
   @Post('reset-password')
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
+  }
+
+  @Get('invites/validate')
+  validateInviteToken(@Query() query: ValidateInviteTokenQueryDto) {
+    return this.authService.validateInviteToken(query.token);
+  }
+
+  @Post('invites/accept')
+  acceptInvite(@Body() dto: AcceptInviteDto) {
+    return this.authService.acceptInvite(dto);
   }
 
   @Get('me')

@@ -1,0 +1,542 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository } from 'typeorm';
+import {
+  mapAssignableProjectMember,
+  mapWorkspaceProjectResponse,
+  type WorkspaceProjectResponse,
+} from '../common/mappers/project.mapper';
+import { Organization } from '../entities/organization.entity';
+import { ProjectMember } from '../entities/project-member.entity';
+import { Project } from '../entities/project.entity';
+import { User } from '../entities/user.entity';
+import { AccountStatus } from '../enum/auth.enum';
+import { ProjectMemberRole } from '../enum/project.enum';
+import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
+import {
+  AddProjectMemberDto,
+  CreateProjectDto,
+  UpdateProjectDto,
+  UpdateProjectMemberRoleDto,
+} from './dto/project.dto';
+import {
+  canDeleteProject,
+  canEditProject,
+  canManageProjectMembership,
+  hasOrgWideProjectAccess,
+} from './project-access.util';
+
+@Injectable()
+export class ProjectsService {
+  constructor(
+    @InjectRepository(Project)
+    private readonly projectRepository: Repository<Project>,
+    @InjectRepository(ProjectMember)
+    private readonly projectMemberRepository: Repository<ProjectMember>,
+    @InjectRepository(Organization)
+    private readonly organizationRepository: Repository<Organization>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {}
+
+  async listProjects(user: JwtPayload): Promise<WorkspaceProjectResponse[]> {
+    const projects = await this.findAccessibleProjects(user);
+
+    return projects.map((project) =>
+      mapWorkspaceProjectResponse(
+        project,
+        this.resolveViewerRole(user, project.members ?? []),
+      ),
+    );
+  }
+
+  async getProject(user: JwtPayload, projectId: string) {
+    const project = await this.getAccessibleProject(user, projectId);
+    const membership = this.findMembership(project.members ?? [], user.sub);
+
+    return mapWorkspaceProjectResponse(
+      project,
+      this.resolveViewerRole(user, project.members ?? [], membership),
+    );
+  }
+
+  async createProject(user: JwtPayload, dto: CreateProjectDto) {
+    const organizationId = user.organizationId!;
+
+    await this.ensureUniqueProjectKey(organizationId, dto.key.trim().toUpperCase());
+
+    const memberIds = await this.resolveProjectMemberIds(
+      organizationId,
+      user,
+      dto.memberIds ?? [],
+      true,
+    );
+
+    const project = await this.projectRepository.save(
+      this.projectRepository.create({
+        organizationId,
+        name: dto.name.trim(),
+        key: dto.key.trim().toUpperCase(),
+        description: dto.description?.trim() ?? '',
+        category: dto.category,
+        priority: dto.priority,
+        status: dto.status,
+        visibility: dto.visibility,
+        startDate: dto.startDate ?? null,
+        dueDate: dto.dueDate ?? null,
+        leadUserId: user.sub,
+        createdById: user.sub,
+      }),
+    );
+
+    await this.syncProjectMembers(project.id, memberIds, user.sub, true);
+    await this.incrementOrganizationProjectCount(organizationId);
+
+    return this.getProject(user, project.id);
+  }
+
+  async updateProject(user: JwtPayload, projectId: string, dto: UpdateProjectDto) {
+    const project = await this.getAccessibleProject(user, projectId, true);
+    const membership = this.findMembership(project.members ?? [], user.sub);
+
+    if (!canEditProject(user, membership)) {
+      throw new ForbiddenException('You do not have permission to edit this project.');
+    }
+
+    if (dto.key && dto.key.trim().toUpperCase() !== project.key) {
+      await this.ensureUniqueProjectKey(
+        project.organizationId,
+        dto.key.trim().toUpperCase(),
+        project.id,
+      );
+      project.key = dto.key.trim().toUpperCase();
+    }
+
+    if (dto.name) project.name = dto.name.trim();
+    if (dto.description !== undefined) project.description = dto.description.trim();
+    if (dto.category) project.category = dto.category;
+    if (dto.priority) project.priority = dto.priority;
+    if (dto.status) project.status = dto.status;
+    if (dto.visibility) project.visibility = dto.visibility;
+    if (dto.startDate !== undefined) project.startDate = dto.startDate ?? null;
+    if (dto.dueDate !== undefined) project.dueDate = dto.dueDate ?? null;
+    if (dto.progress !== undefined) project.progress = dto.progress;
+
+    await this.projectRepository.save(project);
+
+    if (dto.memberIds) {
+      if (!canManageProjectMembership(user, membership)) {
+        throw new ForbiddenException('You do not have permission to manage project members.');
+      }
+
+      const memberIds = await this.resolveProjectMemberIds(
+        project.organizationId,
+        user,
+        dto.memberIds,
+        false,
+      );
+
+      await this.syncProjectMembers(project.id, memberIds, user.sub, false);
+    }
+
+    return this.getProject(user, project.id);
+  }
+
+  async deleteProject(user: JwtPayload, projectId: string) {
+    const project = await this.getAccessibleProject(user, projectId, true);
+    const membership = this.findMembership(project.members ?? [], user.sub);
+
+    if (!canDeleteProject(user, membership, project.createdById)) {
+      throw new ForbiddenException('You do not have permission to delete this project.');
+    }
+
+    await this.projectMemberRepository.delete({ projectId: project.id });
+    await this.projectRepository.delete(project.id);
+    await this.decrementOrganizationProjectCount(project.organizationId);
+
+    return {
+      message: `${project.name} deleted successfully.`,
+    };
+  }
+
+  async listAssignableMembers(user: JwtPayload) {
+    const users = await this.findAssignableUsers(user);
+    return users.map(mapAssignableProjectMember);
+  }
+
+  async resolveAccessibleProjectIds(user: JwtPayload) {
+    if (hasOrgWideProjectAccess(user.role)) {
+      const projects = await this.projectRepository.find({
+        where: { organizationId: user.organizationId! },
+        select: { id: true },
+      });
+
+      return projects.map((project) => project.id);
+    }
+
+    return this.getMembershipProjectIds(user);
+  }
+
+  private async getMembershipProjectIds(user: JwtPayload) {
+    const rows = await this.projectMemberRepository
+      .createQueryBuilder('membership')
+      .innerJoin('membership.project', 'project')
+      .where('membership.user_id = :userId', { userId: user.sub })
+      .andWhere('project.organization_id = :organizationId', {
+        organizationId: user.organizationId,
+      })
+      .select('membership.project_id', 'projectId')
+      .getRawMany<{ projectId: string }>();
+
+    return rows.map((row) => row.projectId);
+  }
+
+  async getSquadUserIds(user: JwtPayload) {
+    if (hasOrgWideProjectAccess(user.role)) {
+      const organization = await this.organizationRepository.findOne({
+        where: { id: user.organizationId! },
+        relations: { users: true },
+      });
+
+      return new Set((organization?.users ?? []).map((member) => member.id));
+    }
+
+    const projectIds = await this.resolveAccessibleProjectIds(user);
+
+    if (projectIds.length === 0) {
+      return new Set([user.sub]);
+    }
+
+    const memberships = await this.projectMemberRepository.find({
+      where: { projectId: In(projectIds) },
+      select: { userId: true },
+    });
+
+    const squadIds = new Set(memberships.map((membership) => membership.userId));
+    squadIds.add(user.sub);
+
+    return squadIds;
+  }
+
+  async listProjectMembers(user: JwtPayload, projectId: string) {
+    const project = await this.getAccessibleProject(user, projectId);
+    return (project.members ?? []).map((membership) => ({
+      ...mapAssignableProjectMember(membership.user),
+      projectRole: membership.role,
+    }));
+  }
+
+  async addProjectMember(
+    user: JwtPayload,
+    projectId: string,
+    dto: AddProjectMemberDto,
+  ) {
+    const project = await this.getAccessibleProject(user, projectId, true);
+    const actorMembership = this.findMembership(project.members ?? [], user.sub);
+
+    if (!canManageProjectMembership(user, actorMembership)) {
+      throw new ForbiddenException('You do not have permission to manage project members.');
+    }
+
+    await this.ensureActiveOrganizationUser(project.organizationId, dto.userId);
+
+    const existing = await this.projectMemberRepository.findOne({
+      where: { projectId, userId: dto.userId },
+    });
+
+    if (existing) {
+      throw new ConflictException('This user is already a member of the project.');
+    }
+
+    await this.projectMemberRepository.save(
+      this.projectMemberRepository.create({
+        projectId,
+        userId: dto.userId,
+        role: dto.role ?? ProjectMemberRole.MEMBER,
+      }),
+    );
+
+    return this.listProjectMembers(user, projectId);
+  }
+
+  async updateProjectMemberRole(
+    user: JwtPayload,
+    projectId: string,
+    memberUserId: string,
+    dto: UpdateProjectMemberRoleDto,
+  ) {
+    const project = await this.getAccessibleProject(user, projectId, true);
+    const actorMembership = this.findMembership(project.members ?? [], user.sub);
+
+    if (!canManageProjectMembership(user, actorMembership)) {
+      throw new ForbiddenException('You do not have permission to manage project members.');
+    }
+
+    const membership = await this.projectMemberRepository.findOne({
+      where: { projectId, userId: memberUserId },
+    });
+
+    if (!membership) {
+      throw new NotFoundException('Project member not found.');
+    }
+
+    if (project.leadUserId === memberUserId && dto.role !== ProjectMemberRole.ADMIN) {
+      throw new BadRequestException('Project lead must remain a project admin.');
+    }
+
+    membership.role = dto.role;
+    await this.projectMemberRepository.save(membership);
+
+    return this.listProjectMembers(user, projectId);
+  }
+
+  async removeProjectMember(
+    user: JwtPayload,
+    projectId: string,
+    memberUserId: string,
+  ) {
+    const project = await this.getAccessibleProject(user, projectId, true);
+    const actorMembership = this.findMembership(project.members ?? [], user.sub);
+
+    if (!canManageProjectMembership(user, actorMembership)) {
+      throw new ForbiddenException('You do not have permission to manage project members.');
+    }
+
+    if (memberUserId === project.leadUserId) {
+      throw new BadRequestException('Project lead cannot be removed from the project.');
+    }
+
+    await this.projectMemberRepository.delete({ projectId, userId: memberUserId });
+
+    return this.listProjectMembers(user, projectId);
+  }
+
+  private async findAccessibleProjects(user: JwtPayload) {
+    const organizationId = user.organizationId!;
+
+    if (hasOrgWideProjectAccess(user.role)) {
+      return this.projectRepository.find({
+        where: { organizationId },
+        relations: { members: { user: true } },
+        order: { updatedAt: 'DESC' },
+      });
+    }
+
+    const projectIds = await this.resolveAccessibleProjectIds(user);
+
+    if (projectIds.length === 0) {
+      return [];
+    }
+
+    return this.projectRepository.find({
+      where: { id: In(projectIds), organizationId },
+      relations: { members: { user: true } },
+      order: { updatedAt: 'DESC' },
+    });
+  }
+
+  async ensureAccessibleProject(
+    user: JwtPayload,
+    projectId: string,
+    forWrite = false,
+  ) {
+    return this.getAccessibleProject(user, projectId, forWrite);
+  }
+
+  private async getAccessibleProject(
+    user: JwtPayload,
+    projectId: string,
+    forWrite = false,
+  ) {
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId, organizationId: user.organizationId! },
+      relations: { members: { user: true } },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found.');
+    }
+
+    if (hasOrgWideProjectAccess(user.role)) {
+      return project;
+    }
+
+    const membership = this.findMembership(project.members ?? [], user.sub);
+
+    if (!membership) {
+      throw new ForbiddenException('You do not have access to this project.');
+    }
+
+    if (
+      forWrite &&
+      membership.role === ProjectMemberRole.VIEWER &&
+      !canManageProjectMembership(user, membership)
+    ) {
+      throw new ForbiddenException('Viewers cannot modify this project.');
+    }
+
+    return project;
+  }
+
+  private async findAssignableUsers(user: JwtPayload) {
+    const organization = await this.organizationRepository.findOne({
+      where: { id: user.organizationId! },
+      relations: { users: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found.');
+    }
+
+    const activeUsers = (organization.users ?? []).filter(
+      (member) => member.accountStatus !== AccountStatus.SUSPENDED,
+    );
+
+    if (hasOrgWideProjectAccess(user.role)) {
+      return activeUsers;
+    }
+
+    const squadIds = await this.getSquadUserIds(user);
+    return activeUsers.filter((member) => squadIds.has(member.id));
+  }
+
+  private async resolveProjectMemberIds(
+    organizationId: string,
+    user: JwtPayload,
+    memberIds: string[],
+    isCreate: boolean,
+  ) {
+    const uniqueIds = new Set(memberIds.filter(Boolean));
+    uniqueIds.add(user.sub);
+
+    for (const memberId of uniqueIds) {
+      await this.ensureActiveOrganizationUser(organizationId, memberId);
+    }
+
+    if (!hasOrgWideProjectAccess(user.role) && isCreate) {
+      const squadIds = await this.getSquadUserIds(user);
+
+      for (const memberId of uniqueIds) {
+        if (!squadIds.has(memberId)) {
+          throw new ForbiddenException(
+            'You can only add members from your project squad.',
+          );
+        }
+      }
+    }
+
+    return [...uniqueIds];
+  }
+
+  private async syncProjectMembers(
+    projectId: string,
+    memberIds: string[],
+    leadUserId: string,
+    isCreate: boolean,
+  ) {
+    const existing = await this.projectMemberRepository.find({
+      where: { projectId },
+    });
+
+    const nextIds = new Set(memberIds);
+    nextIds.add(leadUserId);
+
+    for (const membership of existing) {
+      if (!nextIds.has(membership.userId)) {
+        if (membership.userId === leadUserId) continue;
+        await this.projectMemberRepository.delete(membership.id);
+      }
+    }
+
+    for (const userId of nextIds) {
+      const current = existing.find((membership) => membership.userId === userId);
+
+      if (current) {
+        if (userId === leadUserId && current.role !== ProjectMemberRole.ADMIN) {
+          current.role = ProjectMemberRole.ADMIN;
+          await this.projectMemberRepository.save(current);
+        }
+        continue;
+      }
+
+      await this.projectMemberRepository.save(
+        this.projectMemberRepository.create({
+          projectId,
+          userId,
+          role:
+            userId === leadUserId
+              ? ProjectMemberRole.ADMIN
+              : ProjectMemberRole.MEMBER,
+        }),
+      );
+    }
+
+    if (isCreate) {
+      const leadMembership = await this.projectMemberRepository.findOne({
+        where: { projectId, userId: leadUserId },
+      });
+
+      if (leadMembership && leadMembership.role !== ProjectMemberRole.ADMIN) {
+        leadMembership.role = ProjectMemberRole.ADMIN;
+        await this.projectMemberRepository.save(leadMembership);
+      }
+    }
+  }
+
+  private findMembership(memberships: ProjectMember[], userId: string) {
+    return memberships.find((membership) => membership.userId === userId) ?? null;
+  }
+
+  private resolveViewerRole(
+    user: JwtPayload,
+    memberships: ProjectMember[],
+    membership: ProjectMember | null = this.findMembership(memberships, user.sub),
+  ): WorkspaceProjectResponse['viewerRole'] {
+    if (hasOrgWideProjectAccess(user.role)) {
+      return 'org_admin';
+    }
+
+    return membership?.role ?? null;
+  }
+
+  private async ensureUniqueProjectKey(
+    organizationId: string,
+    key: string,
+    excludeId?: string,
+  ) {
+    const existing = await this.projectRepository.findOne({
+      where: { organizationId, key },
+    });
+
+    if (existing && existing.id !== excludeId) {
+      throw new ConflictException('A project with this key already exists.');
+    }
+  }
+
+  private async ensureActiveOrganizationUser(
+    organizationId: string,
+    userId: string,
+  ) {
+    const member = await this.userRepository.findOne({
+      where: { id: userId, organizationId },
+    });
+
+    if (!member || member.accountStatus === AccountStatus.SUSPENDED) {
+      throw new BadRequestException('Invalid project member selected.');
+    }
+  }
+
+  private async incrementOrganizationProjectCount(organizationId: string) {
+    await this.organizationRepository.increment({ id: organizationId }, 'projectCount', 1);
+  }
+
+  private async decrementOrganizationProjectCount(organizationId: string) {
+    await this.organizationRepository.decrement({ id: organizationId }, 'projectCount', 1);
+  }
+}

@@ -15,6 +15,9 @@ import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { BillingModule } from './billing/billing.module';
+import { TeamModule } from './teams/team.module';
+import { ProjectsModule } from './projects/projects.module';
+import { TasksModule } from './tasks/tasks.module';
 
 // module decorator
 @Module({
@@ -46,6 +49,9 @@ import { BillingModule } from './billing/billing.module';
     OrganizationsModule,
     SubscriptionsModule,
     BillingModule,
+    TeamModule,
+    ProjectsModule,
+    TasksModule,
   ],
   controllers: [AppController],
   providers: [

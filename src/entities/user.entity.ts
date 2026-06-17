@@ -5,6 +5,7 @@ import {
   RegisterAs,
   SignupSource,
 } from '../enum/auth.enum';
+import { MemberDepartment } from '../enum/member.enum';
 
 import {
   Column,
@@ -81,6 +82,26 @@ export class User {
 
   @Column({ name: 'organization_id', type: 'uuid', nullable: true })
   organizationId: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: MemberDepartment,
+    default: MemberDepartment.ENGINEERING,
+    nullable: true,
+  })
+  department: MemberDepartment | null;
+
+  @Column({ name: 'invite_token', type: 'varchar', length: 64, nullable: true })
+  inviteToken: string | null;
+
+  @Column({ name: 'invite_expires_at', type: 'timestamptz', nullable: true })
+  inviteExpiresAt: Date | null;
+
+  @Column({ name: 'invited_by_id', type: 'uuid', nullable: true })
+  invitedById: string | null;
+
+  @Column({ name: 'last_active_at', type: 'timestamptz', nullable: true })
+  lastActiveAt: Date | null;
 
   @ManyToOne(() => Organization, (organization) => organization.users, {
     nullable: true,

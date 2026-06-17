@@ -1,0 +1,56 @@
+import { RegisterAs } from '../enum/auth.enum';
+import { ProjectMemberRole } from '../enum/project.enum';
+import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
+import type { ProjectMember } from '../entities/project-member.entity';
+
+export function hasOrgWideProjectAccess(role: RegisterAs) {
+  return role === RegisterAs.OWNER || role === RegisterAs.ADMIN;
+}
+
+export function isProjectScopedWorkspaceRole(role: RegisterAs) {
+  return role === RegisterAs.MANAGER || role === RegisterAs.MEMBER;
+}
+
+export function canManageProjectMembership(
+  actor: JwtPayload,
+  membership: ProjectMember | null,
+) {
+  if (hasOrgWideProjectAccess(actor.role)) {
+    return true;
+  }
+
+  return membership?.role === ProjectMemberRole.ADMIN;
+}
+
+export function canEditProject(
+  actor: JwtPayload,
+  membership: ProjectMember | null,
+) {
+  if (hasOrgWideProjectAccess(actor.role)) {
+    return true;
+  }
+
+  return (
+    membership?.role === ProjectMemberRole.ADMIN ||
+    membership?.role === ProjectMemberRole.MEMBER
+  );
+}
+
+export function canDeleteProject(
+  actor: JwtPayload,
+  membership: ProjectMember | null,
+  createdById: string,
+) {
+  if (hasOrgWideProjectAccess(actor.role)) {
+    return true;
+  }
+
+  if (actor.role === RegisterAs.MANAGER) {
+    return (
+      membership?.role === ProjectMemberRole.ADMIN ||
+      createdById === actor.sub
+    );
+  }
+
+  return false;
+}

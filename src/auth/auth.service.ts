@@ -14,6 +14,7 @@ import * as argon2 from 'argon2';
 import { createHash, randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto';
+import { AcceptInviteDto } from '../dto/accept-invite.dto';
 import { RegisterDto } from '../dto/register.dto';
 import { LoginDto } from '../dto/login.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
@@ -35,6 +36,7 @@ import type { JwtPayload } from './jwt/jwt-payload.type';
 import { EmailService } from '../email/email.service';
 import { OrganizationStatus } from '../enum/billing.enum';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { MemberDepartment } from '../enum/member.enum';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
@@ -62,6 +64,34 @@ export type AuthSessionResponse = {
   message: string;
   accessToken: string;
   user: AuthUserResponse;
+};
+
+export type InviteValidationResponse = {
+  isValid: true;
+  email: string;
+  fullName: string;
+  role: RegisterAs;
+  roleLabel: string;
+  department: MemberDepartment;
+  departmentLabel: string;
+  organizationName: string;
+  organizationSlug: string;
+  inviterName: string;
+  expiresAt: string;
+};
+
+const INVITE_ROLE_LABELS: Record<string, string> = {
+  [RegisterAs.ADMIN]: 'Admin',
+  [RegisterAs.MANAGER]: 'Manager',
+  [RegisterAs.MEMBER]: 'Member',
+};
+
+const DEPARTMENT_LABELS: Record<MemberDepartment, string> = {
+  [MemberDepartment.ENGINEERING]: 'Engineering',
+  [MemberDepartment.DESIGN]: 'Design',
+  [MemberDepartment.PRODUCT]: 'Product',
+  [MemberDepartment.MARKETING]: 'Marketing',
+  [MemberDepartment.OPERATIONS]: 'Operations',
 };
 
 @Injectable()
@@ -275,6 +305,11 @@ export class AuthService {
 
     await this.pendingRegistrationRepository.delete({ email });
 
+    await this.organizationsService.createDefaultSubscriptionForOrganization(
+      organization.id,
+      pending.email,
+    );
+
     return {
       message: `${organization.name} created successfully. You are now the organization owner.`,
       accessToken: this.signAccessToken(user, false),
@@ -322,6 +357,9 @@ export class AuthService {
     }
 
     const remember = dto.remember === true;
+
+    user.lastActiveAt = new Date();
+    await this.userRepository.save(user);
 
     return {
       message: `Welcome back, ${user.fullName}.`,
@@ -417,6 +455,66 @@ export class AuthService {
     return this.toAuthUserResponse(user, user.organization);
   }
 
+  async validateInviteToken(token: string): Promise<InviteValidationResponse> {
+    const member = await this.findValidInviteMember(token.trim());
+    const organization = member.organization;
+
+    if (!organization) {
+      throw new BadRequestException('This invitation is no longer valid.');
+    }
+
+    const inviter = member.invitedById
+      ? await this.userRepository.findOne({ where: { id: member.invitedById } })
+      : null;
+    const department = member.department ?? MemberDepartment.ENGINEERING;
+
+    return {
+      isValid: true,
+      email: member.email,
+      fullName: member.fullName,
+      role: member.role,
+      roleLabel: INVITE_ROLE_LABELS[member.role] ?? 'Member',
+      department,
+      departmentLabel: DEPARTMENT_LABELS[department],
+      organizationName: organization.name,
+      organizationSlug: organization.slug,
+      inviterName: inviter?.fullName ?? 'Your workspace admin',
+      expiresAt: member.inviteExpiresAt!.toISOString(),
+    };
+  }
+
+  async acceptInvite(dto: AcceptInviteDto): Promise<AuthSessionResponse> {
+    const member = await this.findValidInviteMember(dto.token.trim());
+    const organization = member.organization;
+
+    if (!organization) {
+      throw new BadRequestException('This invitation is no longer valid.');
+    }
+
+    if (member.accountStatus === AccountStatus.SUSPENDED) {
+      throw new BadRequestException('This invitation has been revoked.');
+    }
+
+    const fullName = dto.fullName?.trim() || member.fullName;
+    const passwordHash = await argon2.hash(dto.password);
+
+    member.fullName = fullName;
+    member.passwordHash = passwordHash;
+    member.accountStatus = AccountStatus.ACTIVE;
+    member.emailVerificationStatus = EmailVerificationStatus.VERIFIED;
+    member.inviteToken = null;
+    member.inviteExpiresAt = null;
+    member.lastActiveAt = new Date();
+
+    await this.userRepository.save(member);
+
+    return {
+      message: `Welcome to ${organization.name}, ${fullName}.`,
+      accessToken: this.signAccessToken(member, false),
+      user: await this.toAuthUserResponse(member, organization),
+    };
+  }
+
   async resolveRequiresPlanSelection(user: User): Promise<boolean> {
     if (!user.organizationId) {
       return false;
@@ -479,6 +577,45 @@ export class AuthService {
 
   private hashResetToken(token: string) {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  private async findValidInviteMember(token: string) {
+    const member = await this.userRepository.findOne({
+      where: { inviteToken: token },
+      relations: { organization: true },
+    });
+
+    if (!member) {
+      throw new BadRequestException('Invalid or expired invitation link.');
+    }
+
+    if (member.signupSource !== SignupSource.INVITE) {
+      throw new BadRequestException('Invalid or expired invitation link.');
+    }
+
+    if (!member.inviteExpiresAt || member.inviteExpiresAt.getTime() < Date.now()) {
+      throw new BadRequestException(
+        'This invitation has expired. Ask your workspace admin to resend it.',
+      );
+    }
+
+    if (member.accountStatus !== AccountStatus.PENDING) {
+      if (member.passwordHash) {
+        throw new BadRequestException(
+          'This invitation has already been accepted. Please log in instead.',
+        );
+      }
+
+      throw new BadRequestException('This invitation is no longer valid.');
+    }
+
+    if (member.passwordHash) {
+      throw new BadRequestException(
+        'This invitation has already been accepted. Please log in instead.',
+      );
+    }
+
+    return member;
   }
 
   private async findValidPasswordReset(token: string) {

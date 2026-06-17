@@ -8,6 +8,7 @@ import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { buildRegisterOtpEmailHtml } from './templates/register-otp.template';
 import { buildPasswordResetEmailHtml } from './templates/password-reset.template';
+import { buildTeamInviteEmailHtml } from './templates/team-invite.template';
 
 const OTP_TTL_MINUTES = 10;
 const PASSWORD_RESET_TTL_MINUTES = 60;
@@ -81,6 +82,33 @@ export class EmailService {
         expiresInMinutes: PASSWORD_RESET_TTL_MINUTES,
       }),
       failureMessage: 'Unable to send password reset email. Please try again.',
+    });
+  }
+
+  async sendTeamInviteEmail(params: {
+    to: string;
+    fullName: string;
+    organizationName: string;
+    inviterName: string;
+    roleLabel: string;
+    inviteUrl: string;
+    message?: string;
+  }): Promise<void> {
+    const to = params.to.trim().toLowerCase();
+
+    await this.sendEmail({
+      to,
+      subject: `You're invited to join ${params.organizationName} on FlowSync`,
+      html: buildTeamInviteEmailHtml({
+        fullName: params.fullName,
+        organizationName: params.organizationName,
+        inviterName: params.inviterName,
+        roleLabel: params.roleLabel,
+        inviteUrl: params.inviteUrl,
+        message: params.message,
+        expiresInDays: 7,
+      }),
+      failureMessage: 'Unable to send team invitation email. Please try again.',
     });
   }
 
