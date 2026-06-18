@@ -6,14 +6,21 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { unlink } from 'fs/promises';
+import {
+  buildTaskAttachmentStorageKey,
+  getTaskAttachmentAbsolutePath,
+} from './task-attachment.storage';
 import {
   buildTaskStatusSlices,
   mapKanbanTask,
+  mapTaskAttachmentResponse,
   mapWorkspaceTaskResponse,
 } from '../common/mappers/task.mapper';
 import { mapProjectMemberSummary as mapMemberSummary } from '../common/mappers/project.mapper';
 import { Project } from '../entities/project.entity';
 import { Task } from '../entities/task.entity';
+import { TaskAttachment } from '../entities/task-attachment.entity';
 import { User } from '../entities/user.entity';
 import { AccountStatus } from '../enum/auth.enum';
 import { ProjectMemberRole } from '../enum/project.enum';
@@ -47,6 +54,8 @@ export class TasksService {
   constructor(
     @InjectRepository(Task)
     private readonly taskRepository: Repository<Task>,
+    @InjectRepository(TaskAttachment)
+    private readonly taskAttachmentRepository: Repository<TaskAttachment>,
     @InjectRepository(Project)
     private readonly projectRepository: Repository<Project>,
     @InjectRepository(User)
@@ -94,6 +103,8 @@ export class TasksService {
         assigneeId: dto.assigneeId ?? null,
         createdById: user.sub,
         dueDate: dto.dueDate ?? null,
+        estimatedHours: dto.estimatedHours ?? null,
+        labels: dto.labels ?? [],
       }),
     );
 
@@ -137,10 +148,77 @@ export class TasksService {
       task.assigneeId = dto.assigneeId;
     }
 
+    if (dto.estimatedHours !== undefined) {
+      task.estimatedHours = dto.estimatedHours;
+    }
+
+    if (dto.labels !== undefined) {
+      task.labels = dto.labels;
+    }
+
     await this.taskRepository.save(task);
     await this.syncProjectTaskMetrics(task.projectId);
 
     return this.getTask(user, task.id);
+  }
+
+  async uploadAttachment(
+    user: JwtPayload,
+    taskId: string,
+    file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Attachment file is required.');
+    }
+
+    const task = await this.getAccessibleTask(user, taskId, true);
+
+    if (!canModifyTask(user, task)) {
+      throw new ForbiddenException('You do not have permission to edit this task.');
+    }
+
+    const storageKey = buildTaskAttachmentStorageKey(taskId, file.filename);
+    const attachment = await this.taskAttachmentRepository.save(
+      this.taskAttachmentRepository.create({
+        taskId: task.id,
+        organizationId: user.organizationId!,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        storageKey,
+      }),
+    );
+
+    return mapTaskAttachmentResponse(attachment);
+  }
+
+  async deleteAttachment(
+    user: JwtPayload,
+    taskId: string,
+    attachmentId: string,
+  ) {
+    const task = await this.getAccessibleTask(user, taskId, true);
+
+    if (!canModifyTask(user, task)) {
+      throw new ForbiddenException('You do not have permission to edit this task.');
+    }
+
+    const attachment = await this.taskAttachmentRepository.findOne({
+      where: {
+        id: attachmentId,
+        taskId: task.id,
+        organizationId: user.organizationId!,
+      },
+    });
+
+    if (!attachment) {
+      throw new NotFoundException('Attachment not found.');
+    }
+
+    await this.removeAttachmentFile(attachment);
+    await this.taskAttachmentRepository.delete(attachment.id);
+
+    return { message: 'Attachment removed successfully.' };
   }
 
   async deleteTask(user: JwtPayload, taskId: string) {
@@ -151,6 +229,14 @@ export class TasksService {
     }
 
     const projectId = task.projectId;
+    const attachments = await this.taskAttachmentRepository.find({
+      where: { taskId: task.id },
+    });
+
+    for (const attachment of attachments) {
+      await this.removeAttachmentFile(attachment);
+    }
+
     await this.taskRepository.delete(task.id);
     await this.syncProjectTaskMetrics(projectId);
 
@@ -367,6 +453,7 @@ export class TasksService {
       .createQueryBuilder('task')
       .leftJoinAndSelect('task.project', 'project')
       .leftJoinAndSelect('task.assignee', 'assignee')
+      .leftJoinAndSelect('task.attachments', 'attachments')
       .where('task.organization_id = :organizationId', {
         organizationId: user.organizationId,
       })
@@ -403,7 +490,11 @@ export class TasksService {
   ) {
     const task = await this.taskRepository.findOne({
       where: { id: taskId, organizationId: user.organizationId! },
-      relations: { project: { members: { user: true } }, assignee: true },
+      relations: {
+        project: { members: { user: true } },
+        assignee: true,
+        attachments: true,
+      },
     });
 
     if (!task) {
@@ -492,5 +583,13 @@ export class TasksService {
         completed,
       };
     });
+  }
+
+  private async removeAttachmentFile(attachment: TaskAttachment) {
+    try {
+      await unlink(getTaskAttachmentAbsolutePath(attachment.storageKey));
+    } catch {
+      // Ignore missing files on disk.
+    }
   }
 }

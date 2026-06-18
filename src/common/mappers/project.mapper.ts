@@ -29,6 +29,8 @@ export type WorkspaceProjectResponse = {
   dueDate: string | null;
   startDate: string | null;
   taskCount: number;
+  completedTaskCount: number;
+  totalEstimatedHours: number;
   commentCount: number;
   icon: 'design' | 'mobile' | 'security' | 'migration';
   iconBg: string;
@@ -89,9 +91,15 @@ export function mapProjectMemberSummary(
   };
 }
 
+export type ProjectTaskStats = {
+  completedTaskCount: number;
+  totalEstimatedHours: number;
+};
+
 export function mapWorkspaceProjectResponse(
   project: Project,
   viewerRole: WorkspaceProjectResponse['viewerRole'] = null,
+  taskStats?: ProjectTaskStats,
 ): WorkspaceProjectResponse {
   const iconMeta = CATEGORY_ICON[project.category] ?? CATEGORY_ICON[ProjectCategory.PRODUCT];
   const members = (project.members ?? [])
@@ -112,6 +120,12 @@ export function mapWorkspaceProjectResponse(
     dueDate: project.dueDate,
     startDate: project.startDate,
     taskCount: project.taskCount,
+    completedTaskCount:
+      taskStats?.completedTaskCount ??
+      (project.taskCount > 0
+        ? Math.round((project.progress / 100) * project.taskCount)
+        : 0),
+    totalEstimatedHours: taskStats?.totalEstimatedHours ?? 0,
     commentCount: project.commentCount,
     icon: iconMeta.icon,
     iconBg: iconMeta.iconBg,

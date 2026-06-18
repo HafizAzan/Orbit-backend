@@ -4,11 +4,13 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Organization } from './organization.entity';
 import { Project } from './project.entity';
+import { TaskAttachment } from './task-attachment.entity';
 import { User } from './user.entity';
 import { TaskPriority, TaskStatus } from '../enum/task.enum';
 
@@ -54,6 +56,15 @@ export class Task {
 
   @Column({ name: 'due_date', type: 'date', nullable: true })
   dueDate: string | null;
+
+  @Column({ name: 'estimated_hours', type: 'integer', nullable: true })
+  estimatedHours: number | null;
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  labels: string[];
+
+  @OneToMany(() => TaskAttachment, (attachment) => attachment.task)
+  attachments: TaskAttachment[];
 
   @ManyToOne(() => Organization, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'organization_id' })

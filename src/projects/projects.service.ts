@@ -10,14 +10,17 @@ import { In, Repository } from 'typeorm';
 import {
   mapAssignableProjectMember,
   mapWorkspaceProjectResponse,
+  type ProjectTaskStats,
   type WorkspaceProjectResponse,
 } from '../common/mappers/project.mapper';
 import { Organization } from '../entities/organization.entity';
 import { ProjectMember } from '../entities/project-member.entity';
 import { Project } from '../entities/project.entity';
+import { Task } from '../entities/task.entity';
 import { User } from '../entities/user.entity';
 import { AccountStatus } from '../enum/auth.enum';
 import { ProjectMemberRole } from '../enum/project.enum';
+import { TaskStatus } from '../enum/task.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import {
   AddProjectMemberDto,
@@ -39,6 +42,8 @@ export class ProjectsService {
     private readonly projectRepository: Repository<Project>,
     @InjectRepository(ProjectMember)
     private readonly projectMemberRepository: Repository<ProjectMember>,
+    @InjectRepository(Task)
+    private readonly taskRepository: Repository<Task>,
     @InjectRepository(Organization)
     private readonly organizationRepository: Repository<Organization>,
     @InjectRepository(User)
@@ -47,11 +52,13 @@ export class ProjectsService {
 
   async listProjects(user: JwtPayload): Promise<WorkspaceProjectResponse[]> {
     const projects = await this.findAccessibleProjects(user);
+    const statsByProjectId = await this.loadProjectTaskStats(projects.map((project) => project.id));
 
     return projects.map((project) =>
       mapWorkspaceProjectResponse(
         project,
         this.resolveViewerRole(user, project.members ?? []),
+        statsByProjectId.get(project.id),
       ),
     );
   }
@@ -59,10 +66,12 @@ export class ProjectsService {
   async getProject(user: JwtPayload, projectId: string) {
     const project = await this.getAccessibleProject(user, projectId);
     const membership = this.findMembership(project.members ?? [], user.sub);
+    const statsByProjectId = await this.loadProjectTaskStats([project.id]);
 
     return mapWorkspaceProjectResponse(
       project,
       this.resolveViewerRole(user, project.members ?? [], membership),
+      statsByProjectId.get(project.id),
     );
   }
 
@@ -538,5 +547,39 @@ export class ProjectsService {
 
   private async decrementOrganizationProjectCount(organizationId: string) {
     await this.organizationRepository.decrement({ id: organizationId }, 'projectCount', 1);
+  }
+
+  private async loadProjectTaskStats(projectIds: string[]) {
+    const stats = new Map<string, ProjectTaskStats>();
+
+    if (projectIds.length === 0) {
+      return stats;
+    }
+
+    const rows = await this.taskRepository
+      .createQueryBuilder('task')
+      .select('task.project_id', 'projectId')
+      .addSelect(
+        'SUM(CASE WHEN task.status = :done THEN 1 ELSE 0 END)',
+        'completedTaskCount',
+      )
+      .addSelect('COALESCE(SUM(task.estimated_hours), 0)', 'totalEstimatedHours')
+      .where('task.project_id IN (:...projectIds)', { projectIds })
+      .groupBy('task.project_id')
+      .setParameter('done', TaskStatus.DONE)
+      .getRawMany<{
+        projectId: string;
+        completedTaskCount: string;
+        totalEstimatedHours: string;
+      }>();
+
+    for (const row of rows) {
+      stats.set(row.projectId, {
+        completedTaskCount: Number(row.completedTaskCount ?? 0),
+        totalEstimatedHours: Number(row.totalEstimatedHours ?? 0),
+      });
+    }
+
+    return stats;
   }
 }

@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { TASK_UPLOADS_ROOT } from './tasks/task-attachment.storage';
 
 function parseCorsOrigins(value: string): string[] {
   return value
@@ -56,6 +57,10 @@ async function bootstrap() {
   );
 
   app.setGlobalPrefix('api/v1');
+
+  app.useStaticAssets(TASK_UPLOADS_ROOT, {
+    prefix: '/api/v1/uploads/',
+  });
 
   app.enableShutdownHooks();
 

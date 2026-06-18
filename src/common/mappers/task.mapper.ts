@@ -1,4 +1,5 @@
 import { Task } from '../../entities/task.entity';
+import { TaskAttachment } from '../../entities/task-attachment.entity';
 import { User } from '../../entities/user.entity';
 import { TaskPriority, TaskStatus } from '../../enum/task.enum';
 import { pickAvatarColor } from './team.mapper';
@@ -8,6 +9,15 @@ export type TaskAssigneeSummary = {
   name: string;
   initials: string;
   avatarColor: string;
+};
+
+export type TaskAttachmentResponse = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  createdAt: string;
 };
 
 export type WorkspaceTaskResponse = {
@@ -22,6 +32,9 @@ export type WorkspaceTaskResponse = {
   priority: TaskPriority;
   status: TaskStatus;
   dueDate: string | null;
+  estimatedHours: number | null;
+  labels: string[];
+  attachments: TaskAttachmentResponse[];
   createdById: string;
   createdAt: string;
   updatedAt: string;
@@ -56,10 +69,24 @@ export function mapTaskAssignee(user: User | null | undefined): TaskAssigneeSumm
   };
 }
 
+export function mapTaskAttachmentResponse(attachment: TaskAttachment): TaskAttachmentResponse {
+  return {
+    id: attachment.id,
+    fileName: attachment.fileName,
+    mimeType: attachment.mimeType,
+    size: attachment.size,
+    url: `/uploads/${attachment.storageKey.replace(/\\/g, '/')}`,
+    createdAt: attachment.createdAt.toISOString(),
+  };
+}
+
 export function mapWorkspaceTaskResponse(task: Task): WorkspaceTaskResponse {
   const project = task.project;
   const projectKey = project?.key ?? 'TASK';
   const projectName = project?.name ?? 'Project';
+  const attachments = [...(task.attachments ?? [])].sort(
+    (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+  );
 
   return {
     id: task.id,
@@ -73,6 +100,9 @@ export function mapWorkspaceTaskResponse(task: Task): WorkspaceTaskResponse {
     priority: task.priority,
     status: task.status,
     dueDate: task.dueDate,
+    estimatedHours: task.estimatedHours,
+    labels: task.labels ?? [],
+    attachments: attachments.map(mapTaskAttachmentResponse),
     createdById: task.createdById,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),

@@ -6,13 +6,17 @@ import {
   Param,
   Patch,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { CreateTaskDto, UpdateTaskDto } from './dto/task.dto';
+import { taskAttachmentUploadOptions } from './task-attachment.storage';
 import { TasksService } from './tasks.service';
 
 @Controller('tasks')
@@ -66,6 +70,16 @@ export class TasksController {
     return this.tasksService.createTask(user, dto);
   }
 
+  @Post(':taskId/attachments')
+  @UseInterceptors(FileInterceptor('file', taskAttachmentUploadOptions))
+  uploadAttachment(
+    @CurrentUser() user: JwtPayload,
+    @Param('taskId') taskId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.tasksService.uploadAttachment(user, taskId, file);
+  }
+
   @Patch(':taskId')
   updateTask(
     @CurrentUser() user: JwtPayload,
@@ -73,6 +87,15 @@ export class TasksController {
     @Body() dto: UpdateTaskDto,
   ) {
     return this.tasksService.updateTask(user, taskId, dto);
+  }
+
+  @Delete(':taskId/attachments/:attachmentId')
+  deleteAttachment(
+    @CurrentUser() user: JwtPayload,
+    @Param('taskId') taskId: string,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    return this.tasksService.deleteAttachment(user, taskId, attachmentId);
   }
 
   @Delete(':taskId')
