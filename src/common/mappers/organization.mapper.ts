@@ -22,11 +22,20 @@ export type WorkspaceOrganizationResponse = OrganizationResponse & {
   slug: string;
 };
 
+import type {
+  PaginatedResponse,
+  PaginationQueryDto,
+} from '../dto/pagination-query.dto';
+import {
+  buildPaginatedResponse,
+  paginateArray,
+  resolvePagination,
+} from '../dto/pagination-query.dto';
+
 export type OrganizationMembersSummaryResponse = {
   occupiedSeats: number;
   totalSeats: number;
-  members: OrganizationMemberResponse[];
-};
+} & PaginatedResponse<OrganizationMemberResponse>;
 
 const WORKSPACE_SEAT_LIMITS: Record<string, number> = {
   FREE: 5,
@@ -68,14 +77,23 @@ export function resolveOrganizationSeatLimit(planCode: string) {
 export function mapOrganizationMembersSummary(
   members: User[],
   planCode: string,
+  query: PaginationQueryDto = {},
 ): OrganizationMembersSummaryResponse {
   const activeMembers = members.filter(
     (member) => member.accountStatus !== AccountStatus.SUSPENDED,
+  );
+  const mappedMembers = activeMembers.map(mapOrganizationMemberResponse);
+  const { page, limit, skip, take } = resolvePagination(query);
+  const paginated = buildPaginatedResponse(
+    mappedMembers.slice(skip, skip + take),
+    mappedMembers.length,
+    page,
+    limit,
   );
 
   return {
     occupiedSeats: activeMembers.length,
     totalSeats: resolveOrganizationSeatLimit(planCode),
-    members: activeMembers.map(mapOrganizationMemberResponse),
+    ...paginated,
   };
 }

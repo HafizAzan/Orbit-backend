@@ -18,21 +18,33 @@ import { ProjectMember } from '../entities/project-member.entity';
 import { Project } from '../entities/project.entity';
 import { Task } from '../entities/task.entity';
 import { User } from '../entities/user.entity';
-import { AccountStatus } from '../enum/auth.enum';
+import { AccountStatus, RegisterAs } from '../enum/auth.enum';
 import { ProjectMemberRole } from '../enum/project.enum';
 import { TaskStatus } from '../enum/task.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import {
+  buildPaginatedResponse,
+  paginateArray,
+  resolvePagination,
+  type PaginatedResponse,
+} from '../common/dto/pagination-query.dto';
+import {
   AddProjectMemberDto,
   CreateProjectDto,
+  ListProjectsQueryDto,
   UpdateProjectDto,
   UpdateProjectMemberRoleDto,
 } from './dto/project.dto';
+import {
+  ListAssignableMembersQueryDto,
+  ListProjectMembersQueryDto,
+} from './dto/project-list-query.dto';
 import {
   canDeleteProject,
   canEditProject,
   canManageProjectMembership,
   hasOrgWideProjectAccess,
+  isOperationalProjectLeadRole,
 } from './project-access.util';
 
 @Injectable()
@@ -50,16 +62,29 @@ export class ProjectsService {
     private readonly userRepository: Repository<User>,
   ) {}
 
-  async listProjects(user: JwtPayload): Promise<WorkspaceProjectResponse[]> {
-    const projects = await this.findAccessibleProjects(user);
-    const statsByProjectId = await this.loadProjectTaskStats(projects.map((project) => project.id));
+  async listProjects(user: JwtPayload, query: ListProjectsQueryDto = {}) {
+    const { page, limit, skip, take } = resolvePagination(query);
 
-    return projects.map((project) =>
-      mapWorkspaceProjectResponse(
-        project,
-        this.resolveViewerRole(user, project.members ?? []),
-        statsByProjectId.get(project.id),
+    const [projects, total] = await this.findAccessibleProjectsPaginated(
+      user,
+      skip,
+      limit,
+    );
+    const statsByProjectId = await this.loadProjectTaskStats(
+      projects.map((project) => project.id),
+    );
+
+    return buildPaginatedResponse(
+      projects.map((project) =>
+        mapWorkspaceProjectResponse(
+          project,
+          this.resolveViewerRole(user, project.members ?? []),
+          statsByProjectId.get(project.id),
+        ),
       ),
+      total,
+      page,
+      limit,
     );
   }
 
@@ -80,11 +105,16 @@ export class ProjectsService {
 
     await this.ensureUniqueProjectKey(organizationId, dto.key.trim().toUpperCase());
 
+    const leadUserId = await this.resolveProjectLeadUserId(
+      user,
+      organizationId,
+      dto.leadUserId,
+    );
+
     const memberIds = await this.resolveProjectMemberIds(
       organizationId,
-      user,
+      leadUserId,
       dto.memberIds ?? [],
-      true,
     );
 
     const project = await this.projectRepository.save(
@@ -99,12 +129,12 @@ export class ProjectsService {
         visibility: dto.visibility,
         startDate: dto.startDate ?? null,
         dueDate: dto.dueDate ?? null,
-        leadUserId: user.sub,
+        leadUserId,
         createdById: user.sub,
       }),
     );
 
-    await this.syncProjectMembers(project.id, memberIds, user.sub, true);
+    await this.syncProjectMembers(project.id, memberIds, leadUserId, true);
     await this.incrementOrganizationProjectCount(organizationId);
 
     return this.getProject(user, project.id);
@@ -137,6 +167,18 @@ export class ProjectsService {
     if (dto.dueDate !== undefined) project.dueDate = dto.dueDate ?? null;
     if (dto.progress !== undefined) project.progress = dto.progress;
 
+    if (dto.leadUserId !== undefined && hasOrgWideProjectAccess(user.role)) {
+      if (!canManageProjectMembership(user, membership)) {
+        throw new ForbiddenException('You do not have permission to change the project lead.');
+      }
+
+      project.leadUserId = await this.resolveProjectLeadUserId(
+        user,
+        project.organizationId,
+        dto.leadUserId,
+      );
+    }
+
     await this.projectRepository.save(project);
 
     if (dto.memberIds) {
@@ -144,14 +186,24 @@ export class ProjectsService {
         throw new ForbiddenException('You do not have permission to manage project members.');
       }
 
+      const leadUserId = project.leadUserId ?? user.sub;
       const memberIds = await this.resolveProjectMemberIds(
         project.organizationId,
-        user,
+        leadUserId,
         dto.memberIds,
-        false,
       );
 
-      await this.syncProjectMembers(project.id, memberIds, user.sub, false);
+      await this.syncProjectMembers(project.id, memberIds, leadUserId, false);
+    } else if (dto.leadUserId !== undefined && hasOrgWideProjectAccess(user.role)) {
+      const leadUserId = project.leadUserId ?? user.sub;
+      const currentMemberIds = (project.members ?? []).map((entry) => entry.userId);
+      const memberIds = await this.resolveProjectMemberIds(
+        project.organizationId,
+        leadUserId,
+        currentMemberIds,
+      );
+
+      await this.syncProjectMembers(project.id, memberIds, leadUserId, false);
     }
 
     return this.getProject(user, project.id);
@@ -174,9 +226,13 @@ export class ProjectsService {
     };
   }
 
-  async listAssignableMembers(user: JwtPayload) {
+  async listAssignableMembers(
+    user: JwtPayload,
+    query: ListAssignableMembersQueryDto = {},
+  ): Promise<PaginatedResponse<ReturnType<typeof mapAssignableProjectMember>>> {
     const users = await this.findAssignableUsers(user);
-    return users.map(mapAssignableProjectMember);
+    const mapped = users.map(mapAssignableProjectMember);
+    return paginateArray(mapped, query);
   }
 
   async resolveAccessibleProjectIds(user: JwtPayload) {
@@ -233,12 +289,60 @@ export class ProjectsService {
     return squadIds;
   }
 
-  async listProjectMembers(user: JwtPayload, projectId: string) {
+  async countProjectMembershipsByUserIds(
+    organizationId: string,
+    userIds: string[],
+  ) {
+    const counts = new Map<string, number>();
+
+    for (const userId of userIds) {
+      counts.set(userId, 0);
+    }
+
+    if (userIds.length === 0) {
+      return counts;
+    }
+
+    const rows = await this.projectMemberRepository
+      .createQueryBuilder('membership')
+      .innerJoin('membership.project', 'project')
+      .select('membership.user_id', 'userId')
+      .addSelect('COUNT(DISTINCT membership.project_id)', 'projectCount')
+      .where('project.organization_id = :organizationId', { organizationId })
+      .andWhere('membership.user_id IN (:...userIds)', { userIds })
+      .groupBy('membership.user_id')
+      .getRawMany<{ userId: string; projectCount: string }>();
+
+    for (const row of rows) {
+      counts.set(row.userId, Number(row.projectCount ?? 0));
+    }
+
+    return counts;
+  }
+
+  async countProjectMembershipsForUser(
+    organizationId: string,
+    userId: string,
+  ) {
+    const counts = await this.countProjectMembershipsByUserIds(organizationId, [
+      userId,
+    ]);
+
+    return counts.get(userId) ?? 0;
+  }
+
+  async listProjectMembers(
+    user: JwtPayload,
+    projectId: string,
+    query: ListProjectMembersQueryDto = {},
+  ) {
     const project = await this.getAccessibleProject(user, projectId);
-    return (project.members ?? []).map((membership) => ({
+    const members = (project.members ?? []).map((membership) => ({
       ...mapAssignableProjectMember(membership.user),
       projectRole: membership.role,
     }));
+
+    return paginateArray(members, query);
   }
 
   async addProjectMember(
@@ -350,6 +454,38 @@ export class ProjectsService {
     });
   }
 
+  private async findAccessibleProjectsPaginated(
+    user: JwtPayload,
+    skip: number,
+    take: number,
+  ): Promise<[Project[], number]> {
+    const organizationId = user.organizationId!;
+
+    if (hasOrgWideProjectAccess(user.role)) {
+      return this.projectRepository.findAndCount({
+        where: { organizationId },
+        relations: { members: { user: true } },
+        order: { updatedAt: 'DESC' },
+        skip,
+        take,
+      });
+    }
+
+    const projectIds = await this.resolveAccessibleProjectIds(user);
+
+    if (projectIds.length === 0) {
+      return [[], 0];
+    }
+
+    return this.projectRepository.findAndCount({
+      where: { id: In(projectIds), organizationId },
+      relations: { members: { user: true } },
+      order: { updatedAt: 'DESC' },
+      skip,
+      take,
+    });
+  }
+
   async ensureAccessibleProject(
     user: JwtPayload,
     projectId: string,
@@ -408,39 +544,79 @@ export class ProjectsService {
     );
 
     if (hasOrgWideProjectAccess(user.role)) {
-      return activeUsers;
+      return activeUsers.filter((member) => member.role !== RegisterAs.SUPER_ADMIN);
     }
 
-    const squadIds = await this.getSquadUserIds(user);
-    return activeUsers.filter((member) => squadIds.has(member.id));
+    return activeUsers.filter(
+      (member) =>
+        member.role === RegisterAs.MEMBER ||
+        member.role === RegisterAs.MANAGER ||
+        member.role === RegisterAs.ADMIN,
+    );
   }
 
   private async resolveProjectMemberIds(
     organizationId: string,
-    user: JwtPayload,
+    leadUserId: string,
     memberIds: string[],
-    isCreate: boolean,
   ) {
     const uniqueIds = new Set(memberIds.filter(Boolean));
-    uniqueIds.add(user.sub);
+    uniqueIds.add(leadUserId);
 
     for (const memberId of uniqueIds) {
       await this.ensureActiveOrganizationUser(organizationId, memberId);
     }
 
-    if (!hasOrgWideProjectAccess(user.role) && isCreate) {
-      const squadIds = await this.getSquadUserIds(user);
+    return [...uniqueIds];
+  }
 
-      for (const memberId of uniqueIds) {
-        if (!squadIds.has(memberId)) {
-          throw new ForbiddenException(
-            'You can only add members from your project squad.',
-          );
-        }
-      }
+  private async resolveProjectLeadUserId(
+    user: JwtPayload,
+    organizationId: string,
+    requestedLeadUserId?: string,
+  ) {
+    if (user.role === RegisterAs.MANAGER) {
+      return user.sub;
     }
 
-    return [...uniqueIds];
+    if (user.role === RegisterAs.OWNER) {
+      if (!requestedLeadUserId) {
+        throw new BadRequestException(
+          'Select a delivery lead (manager or admin) for this project.',
+        );
+      }
+
+      return this.validateOperationalLead(organizationId, requestedLeadUserId);
+    }
+
+    if (user.role === RegisterAs.ADMIN) {
+      if (!requestedLeadUserId) {
+        return user.sub;
+      }
+
+      return this.validateOperationalLead(organizationId, requestedLeadUserId);
+    }
+
+    return user.sub;
+  }
+
+  private async validateOperationalLead(
+    organizationId: string,
+    leadUserId: string,
+  ) {
+    await this.ensureActiveOrganizationUser(organizationId, leadUserId);
+
+    const leadUser = await this.userRepository.findOne({
+      where: { id: leadUserId, organizationId },
+    });
+
+    if (!leadUser || !isOperationalProjectLeadRole(leadUser.role)) {
+      throw new BadRequestException(
+        'Project lead must be a manager or admin in your organization.',
+      );
+    }
+
+    return leadUserId;
   }
 
   private async syncProjectMembers(

@@ -6,10 +6,12 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PlatformAdminGuard } from '../auth/guards/platform-admin.guard';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import {
   CreateOrganizationDto,
   UpdateOrganizationDto,
@@ -22,8 +24,8 @@ export class OrganizationsController {
   constructor(private readonly organizationsService: OrganizationsService) {}
 
   @Get()
-  findAll() {
-    return this.organizationsService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.organizationsService.findAll(query);
   }
 
   @Get('stats')

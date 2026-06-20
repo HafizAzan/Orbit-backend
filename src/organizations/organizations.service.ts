@@ -5,6 +5,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import {
+  buildPaginatedResponse,
+  type PaginatedResponse,
+  resolvePagination,
+} from '../common/dto/pagination-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -49,6 +55,8 @@ import {
 } from './dto/organization.dto';
 import { UpdateWorkspaceOrganizationDto } from './dto/workspace-organization.dto';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
+import { ListMembersQueryDto } from '../common/dto/list-members-query.dto';
+import { filterOrganizationMembersForList } from '../common/utils/filter-organization-members.util';
 import { ProjectsService } from '../projects/projects.service';
 import { hasOrgWideProjectAccess } from '../projects/project-access.util';
 
@@ -79,14 +87,24 @@ export class OrganizationsService {
     private readonly projectsService: ProjectsService,
   ) {}
 
-  async findAll(): Promise<OrganizationResponse[]> {
-    const organizations = await this.organizationRepository.find({
+  async findAll(
+    query: PaginationQueryDto = {},
+  ): Promise<PaginatedResponse<OrganizationResponse>> {
+    const { page, limit, skip, take } = resolvePagination(query);
+    const [organizations, total] = await this.organizationRepository.findAndCount({
       relations: { subscription: true, users: true },
       order: { createdAt: 'DESC' },
+      skip,
+      take,
     });
 
-    return organizations.map((organization) =>
-      mapOrganizationResponse(organization, organization.users?.length ?? 0),
+    return buildPaginatedResponse(
+      organizations.map((organization) =>
+        mapOrganizationResponse(organization, organization.users?.length ?? 0),
+      ),
+      total,
+      page,
+      limit,
     );
   }
 
@@ -179,10 +197,6 @@ export class OrganizationsService {
       organization.status = dto.status;
     }
 
-    if (dto.billingEmail) {
-      organization.billingEmail = dto.billingEmail.trim().toLowerCase();
-    }
-
     if (dto.projectCount !== undefined) {
       organization.projectCount = dto.projectCount;
     }
@@ -268,6 +282,7 @@ export class OrganizationsService {
 
   async listCurrentMembers(
     user: JwtPayload,
+    query: ListMembersQueryDto = {},
   ): Promise<OrganizationMembersSummaryResponse> {
     const organization = await this.getOrganizationForUser(user.organizationId!);
     let members = [...(organization.users ?? [])];
@@ -277,12 +292,14 @@ export class OrganizationsService {
       members = members.filter((member) => squadIds.has(member.id));
     }
 
+    members = filterOrganizationMembersForList(members, query.isOwnerNeeded);
+
     members.sort(
       (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
     );
     const planCode = organization.subscription?.plan ?? PlanCode.FREE;
 
-    return mapOrganizationMembersSummary(members, planCode);
+    return mapOrganizationMembersSummary(members, planCode, query);
   }
 
   async updateMemberRole(

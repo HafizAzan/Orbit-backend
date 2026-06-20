@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -16,6 +17,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { CreateTaskDto, UpdateTaskDto } from './dto/task.dto';
+import { ListTasksQueryDto } from './dto/task-list-query.dto';
 import { taskAttachmentUploadOptions } from './task-attachment.storage';
 import { TasksService } from './tasks.service';
 
@@ -48,13 +50,19 @@ export class TasksController {
   }
 
   @Get('my')
-  listMyTasks(@CurrentUser() user: JwtPayload) {
-    return this.tasksService.listMyTasks(user);
+  listMyTasks(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ListTasksQueryDto,
+  ) {
+    return this.tasksService.listMyTasks(user, query);
   }
 
   @Get()
-  listTasks(@CurrentUser() user: JwtPayload) {
-    return this.tasksService.listTasks(user);
+  listTasks(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ListTasksQueryDto,
+  ) {
+    return this.tasksService.listTasks(user, query);
   }
 
   @Get(':taskId')

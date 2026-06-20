@@ -1,4 +1,7 @@
-import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsOptional, IsBoolean, IsString, MinLength } from 'class-validator';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+
+export class ListInvoicesQueryDto extends PaginationQueryDto {}
 
 export class CreateCheckoutDto {
   @IsString()

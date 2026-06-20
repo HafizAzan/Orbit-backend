@@ -4,10 +4,13 @@ import {
   IsArray,
   IsDateString,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import {
@@ -17,6 +20,7 @@ import {
   ProjectStatus,
   ProjectVisibility,
 } from '../../enum/project.enum';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
 export class CreateProjectDto {
   @IsString()
@@ -63,6 +67,10 @@ export class CreateProjectDto {
   @ArrayUnique()
   @IsUUID('4', { each: true })
   memberIds?: string[];
+
+  @IsOptional()
+  @IsUUID('4')
+  leadUserId?: string;
 }
 
 export class UpdateProjectDto {
@@ -116,6 +124,10 @@ export class UpdateProjectDto {
   @ArrayUnique()
   @IsUUID('4', { each: true })
   memberIds?: string[];
+
+  @IsOptional()
+  @IsUUID('4')
+  leadUserId?: string;
 }
 
 export class UpdateProjectMemberRoleDto {
@@ -131,3 +143,5 @@ export class AddProjectMemberDto {
   @IsEnum(ProjectMemberRole)
   role?: ProjectMemberRole;
 }
+
+export class ListProjectsQueryDto extends PaginationQueryDto {}

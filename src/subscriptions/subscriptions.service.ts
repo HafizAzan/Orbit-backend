@@ -1,4 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import {
+  buildPaginatedResponse,
+  resolvePagination,
+  type PaginatedResponse,
+} from '../common/dto/pagination-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -33,10 +39,15 @@ export class SubscriptionsService {
     private readonly userRepository: Repository<User>,
   ) {}
 
-  async findAll(): Promise<SubscriptionResponse[]> {
-    const subscriptions = await this.subscriptionRepository.find({
+  async findAll(
+    query: PaginationQueryDto = {},
+  ): Promise<PaginatedResponse<SubscriptionResponse>> {
+    const { page, limit, skip, take } = resolvePagination(query);
+    const [subscriptions, total] = await this.subscriptionRepository.findAndCount({
       relations: { organization: true },
       order: { createdAt: 'DESC' },
+      skip,
+      take,
     });
 
     const responses: SubscriptionResponse[] = [];
@@ -52,7 +63,7 @@ export class SubscriptionsService {
       );
     }
 
-    return responses;
+    return buildPaginatedResponse(responses, total, page, limit);
   }
 
   async getStats(): Promise<SubscriptionStatsResponse> {
@@ -109,11 +120,6 @@ export class SubscriptionsService {
 
     if (!subscription) {
       throw new NotFoundException('Subscription not found.');
-    }
-
-    if (dto.contactEmail) {
-      subscription.organization.billingEmail = dto.contactEmail.trim().toLowerCase();
-      await this.organizationRepository.save(subscription.organization);
     }
 
     if (dto.plan) {

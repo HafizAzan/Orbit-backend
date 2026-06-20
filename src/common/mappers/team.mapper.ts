@@ -103,13 +103,16 @@ export function mapTeamMemberStatus(user: User): TeamMemberStatus {
   return 'active';
 }
 
-export function mapTeamMemberResponse(user: User): TeamMemberResponse {
+export function mapTeamMemberResponse(
+  user: User,
+  projectCount = 0,
+): TeamMemberResponse {
   return {
     id: user.id,
     name: user.fullName,
     email: user.email,
     department: user.department ?? MemberDepartment.ENGINEERING,
-    projects: 0,
+    projects: projectCount,
     joinedDate: formatJoinedDate(user),
     role: user.role,
     status: mapTeamMemberStatus(user),

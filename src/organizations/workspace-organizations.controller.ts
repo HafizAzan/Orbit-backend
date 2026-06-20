@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Patch,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -12,6 +13,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrganizationAdminGuard } from '../auth/guards/organization-admin.guard';
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
+import { ListMembersQueryDto } from '../common/dto/list-members-query.dto';
 import {
   UpdateOrganizationMemberRoleDto,
   UpdateWorkspaceOrganizationDto,
@@ -38,8 +40,11 @@ export class WorkspaceOrganizationsController {
   }
 
   @Get('me/members')
-  listMembers(@CurrentUser() user: JwtPayload) {
-    return this.organizationsService.listCurrentMembers(user);
+  listMembers(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ListMembersQueryDto,
+  ) {
+    return this.organizationsService.listCurrentMembers(user, query);
   }
 
   @Patch('me/members/:memberId')

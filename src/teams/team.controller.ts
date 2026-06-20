@@ -1,10 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -12,6 +14,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrganizationAdminGuard } from '../auth/guards/organization-admin.guard';
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
+import { ListMembersQueryDto } from '../common/dto/list-members-query.dto';
 import {
   InviteTeamMemberDto,
   UpdateTeamMemberRoleDto,
@@ -25,8 +28,11 @@ export class TeamController {
   constructor(private readonly teamService: TeamService) {}
 
   @Get('members')
-  listMembers(@CurrentUser() user: JwtPayload) {
-    return this.teamService.listMembers(user);
+  listMembers(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ListMembersQueryDto,
+  ) {
+    return this.teamService.listMembers(user, query);
   }
 
   @Get('stats')
@@ -76,5 +82,14 @@ export class TeamController {
     @Param('memberId') memberId: string,
   ) {
     return this.teamService.resendInvite(user, memberId);
+  }
+
+  @Delete('members/:memberId')
+  @UseGuards(OrganizationAdminGuard)
+  deleteMember(
+    @CurrentUser() user: JwtPayload,
+    @Param('memberId') memberId: string,
+  ) {
+    return this.teamService.deleteMember(user, memberId);
   }
 }

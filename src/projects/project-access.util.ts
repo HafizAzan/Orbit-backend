@@ -7,6 +7,14 @@ export function hasOrgWideProjectAccess(role: RegisterAs) {
   return role === RegisterAs.OWNER || role === RegisterAs.ADMIN;
 }
 
+export function isOperationalProjectLeadRole(role: RegisterAs) {
+  return role === RegisterAs.MANAGER || role === RegisterAs.ADMIN;
+}
+
+export function canAssignProjectLead(role: RegisterAs) {
+  return hasOrgWideProjectAccess(role);
+}
+
 export function isProjectScopedWorkspaceRole(role: RegisterAs) {
   return role === RegisterAs.MANAGER || role === RegisterAs.MEMBER;
 }

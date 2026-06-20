@@ -18,6 +18,7 @@ import { BillingModule } from './billing/billing.module';
 import { TeamModule } from './teams/team.module';
 import { ProjectsModule } from './projects/projects.module';
 import { TasksModule } from './tasks/tasks.module';
+import { CalendarModule } from './calendar/calendar.module';
 
 // module decorator
 @Module({
@@ -52,6 +53,7 @@ import { TasksModule } from './tasks/tasks.module';
     TeamModule,
     ProjectsModule,
     TasksModule,
+    CalendarModule,
   ],
   controllers: [AppController],
   providers: [

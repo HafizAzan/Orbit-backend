@@ -41,8 +41,15 @@ import type {
   CancelPlanDto,
   ChangePlanDto,
   CreateCheckoutDto,
+  ListInvoicesQueryDto,
   RefundPaymentDto,
 } from './dto/billing.dto';
+import {
+  buildPaginatedResponse,
+  paginateArray,
+  resolvePagination,
+  type PaginatedResponse,
+} from '../common/dto/pagination-query.dto';
 
 export type BillingCatalogPrice = {
   id: string;
@@ -372,21 +379,26 @@ export class BillingService {
     };
   }
 
-  async listInvoices(user: JwtPayload) {
+  async listInvoices(
+    user: JwtPayload,
+    query: ListInvoicesQueryDto = {},
+  ): Promise<PaginatedResponse<BillingInvoiceResponse>> {
     const { subscription } = await this.resolveOrganizationBillingContext(user);
 
     if (!subscription.stripeCustomerId) {
-      return { invoices: [] as BillingInvoiceResponse[] };
+      return paginateArray([], query);
     }
 
+    const { page, limit } = resolvePagination(query);
+    const stripeLimit = Math.min(limit, 100);
     const invoices = await this.stripeService.client.invoices.list({
       customer: subscription.stripeCustomerId,
-      limit: 24,
+      limit: stripeLimit,
     });
 
-    return {
-      invoices: invoices.data.map((invoice) => this.mapInvoice(invoice)),
-    };
+    const mapped = invoices.data.map((invoice) => this.mapInvoice(invoice));
+
+    return buildPaginatedResponse(mapped, mapped.length, page, limit);
   }
 
   async getCurrentSubscription(user: JwtPayload) {

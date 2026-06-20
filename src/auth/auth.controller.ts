@@ -84,4 +84,10 @@ export class AuthController {
   getMe(@CurrentUser() user: JwtPayload) {
     return this.authService.getMe(user.sub);
   }
+
+  @Post('heartbeat')
+  @UseGuards(JwtAuthGuard)
+  heartbeat(@CurrentUser() user: JwtPayload) {
+    return this.authService.recordHeartbeat(user.sub);
+  }
 }

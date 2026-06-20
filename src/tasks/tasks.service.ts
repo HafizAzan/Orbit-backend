@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { unlink } from 'fs/promises';
 import {
   buildTaskAttachmentStorageKey,
@@ -22,7 +22,7 @@ import { Project } from '../entities/project.entity';
 import { Task } from '../entities/task.entity';
 import { TaskAttachment } from '../entities/task-attachment.entity';
 import { User } from '../entities/user.entity';
-import { AccountStatus } from '../enum/auth.enum';
+import { AccountStatus, RegisterAs } from '../enum/auth.enum';
 import { ProjectMemberRole } from '../enum/project.enum';
 import { TaskPriority, TaskStatus } from '../enum/task.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
@@ -33,6 +33,12 @@ import {
   canViewAllOrganizationTasks,
 } from './task-access.util';
 import { CreateTaskDto, UpdateTaskDto } from './dto/task.dto';
+import { ListTasksQueryDto } from './dto/task-list-query.dto';
+import {
+  buildPaginatedResponse,
+  resolvePagination,
+  type PaginatedResponse,
+} from '../common/dto/pagination-query.dto';
 
 const KANBAN_COLUMNS: Array<{
   id: string;
@@ -63,14 +69,41 @@ export class TasksService {
     private readonly projectsService: ProjectsService,
   ) {}
 
-  async listTasks(user: JwtPayload) {
-    const tasks = await this.findAccessibleTasks(user);
-    return tasks.map(mapWorkspaceTaskResponse);
+  async listTasks(
+    user: JwtPayload,
+    query: ListTasksQueryDto = {},
+  ): Promise<PaginatedResponse<ReturnType<typeof mapWorkspaceTaskResponse>>> {
+    const { page, limit, skip, take } = resolvePagination(query);
+    const [tasks, total] = await this.findAccessibleTasksPaginated(user, {
+      skip,
+      take,
+    });
+
+    return buildPaginatedResponse(
+      tasks.map(mapWorkspaceTaskResponse),
+      total,
+      page,
+      limit,
+    );
   }
 
-  async listMyTasks(user: JwtPayload) {
-    const tasks = await this.findAccessibleTasks(user, { assigneeOnly: true });
-    return tasks.map(mapWorkspaceTaskResponse);
+  async listMyTasks(
+    user: JwtPayload,
+    query: ListTasksQueryDto = {},
+  ): Promise<PaginatedResponse<ReturnType<typeof mapWorkspaceTaskResponse>>> {
+    const { page, limit, skip, take } = resolvePagination(query);
+    const [tasks, total] = await this.findAccessibleTasksPaginated(user, {
+      assigneeOnly: true,
+      skip,
+      take,
+    });
+
+    return buildPaginatedResponse(
+      tasks.map(mapWorkspaceTaskResponse),
+      total,
+      page,
+      limit,
+    );
   }
 
   async getTask(user: JwtPayload, taskId: string) {
@@ -254,7 +287,11 @@ export class TasksService {
 
     const activeTasks = tasks.filter((task) => task.status !== TaskStatus.DONE);
     const completedTasks = tasks.filter((task) => task.status === TaskStatus.DONE);
-    const squadSize = squadIds.size;
+
+    const isOwnerDashboard = user.role === RegisterAs.OWNER;
+    const memberCount = isOwnerDashboard
+      ? await this.countOrganizationMembersExcludingOwner(user.organizationId!)
+      : squadIds.size;
 
     const metrics = [
       {
@@ -277,9 +314,9 @@ export class TasksService {
       },
       {
         id: 'team-members',
-        label: 'Team Members',
-        value: String(squadSize),
-        trend: 'In your squad',
+        label: isOwnerDashboard ? 'Total Members' : 'Team Members',
+        value: String(memberCount),
+        trend: isOwnerDashboard ? 'In workspace' : 'In your squad',
         trendType: 'stable' as const,
         icon: 'team' as const,
         iconBg: 'bg-violet-50',
@@ -429,6 +466,53 @@ export class TasksService {
     };
   }
 
+  private async findAccessibleTasksPaginated(
+    user: JwtPayload,
+    options: {
+      assigneeOnly?: boolean;
+      projectId?: string;
+      skip: number;
+      take: number;
+    },
+  ): Promise<[Task[], number]> {
+    const projectIds = await this.projectsService.resolveAccessibleProjectIds(user);
+
+    if (projectIds.length === 0) {
+      return [[], 0];
+    }
+
+    const scopedProjectIds = options.projectId
+      ? projectIds.includes(options.projectId)
+        ? [options.projectId]
+        : []
+      : projectIds;
+
+    if (scopedProjectIds.length === 0) {
+      return [[], 0];
+    }
+
+    const query = this.taskRepository
+      .createQueryBuilder('task')
+      .leftJoinAndSelect('task.project', 'project')
+      .leftJoinAndSelect('task.assignee', 'assignee')
+      .leftJoinAndSelect('task.attachments', 'attachments')
+      .where('task.organization_id = :organizationId', {
+        organizationId: user.organizationId,
+      })
+      .andWhere('task.project_id IN (:...projectIds)', {
+        projectIds: scopedProjectIds,
+      })
+      .orderBy('task.updated_at', 'DESC')
+      .skip(options.skip)
+      .take(options.take);
+
+    if (options.assigneeOnly || !canViewAllOrganizationTasks(user.role)) {
+      query.andWhere('task.assignee_id = :assigneeId', { assigneeId: user.sub });
+    }
+
+    return query.getManyAndCount();
+  }
+
   private async findAccessibleTasks(
     user: JwtPayload,
     options: { assigneeOnly?: boolean; projectId?: string } = {},
@@ -531,7 +615,7 @@ export class TasksService {
   ) {
     const assignable = await this.projectsService.listAssignableMembers(user);
     const allowedIds = new Set([
-      ...assignable.map((member) => member.id),
+      ...assignable.data.map((member) => member.id),
       ...(project.members ?? []).map((membership) => membership.userId),
     ]);
 
@@ -550,6 +634,16 @@ export class TasksService {
     if (!assignee) {
       throw new BadRequestException('Assignee is not an active workspace member.');
     }
+  }
+
+  private async countOrganizationMembersExcludingOwner(organizationId: string) {
+    return this.userRepository.count({
+      where: {
+        organizationId,
+        role: Not(RegisterAs.OWNER),
+        accountStatus: Not(AccountStatus.SUSPENDED),
+      },
+    });
   }
 
   private async syncProjectTaskMetrics(projectId: string) {

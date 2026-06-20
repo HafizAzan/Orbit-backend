@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PlatformAdminGuard } from '../auth/guards/platform-admin.guard';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { UpdateSubscriptionBillingDto } from './dto/subscription.dto';
 import { SubscriptionsService } from './subscriptions.service';
 
@@ -10,8 +11,8 @@ export class SubscriptionsController {
   constructor(private readonly subscriptionsService: SubscriptionsService) {}
 
   @Get()
-  findAll() {
-    return this.subscriptionsService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.subscriptionsService.findAll(query);
   }
 
   @Get('stats')

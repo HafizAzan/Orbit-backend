@@ -142,6 +142,7 @@ export function mapAssignableProjectMember(user: User) {
     id: user.id,
     name: user.fullName,
     email: user.email,
+    role: user.role,
     avatarColor: pickAvatarColor(user.fullName),
   };
 }

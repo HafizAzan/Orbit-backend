@@ -5,6 +5,7 @@ import {
   Headers,
   Logger,
   Post,
+  Query,
   Req,
   UseGuards,
   BadRequestException,
@@ -21,6 +22,7 @@ import {
   ChangePlanDto,
   ConfirmCheckoutDto,
   CreateCheckoutDto,
+  ListInvoicesQueryDto,
   RefundPaymentDto,
 } from './dto/billing.dto';
 import { StripeService } from './stripe.service';
@@ -78,8 +80,11 @@ export class BillingController {
 
   @Get('invoices')
   @UseGuards(JwtAuthGuard, OrganizationBillingGuard)
-  listInvoices(@CurrentUser() user: JwtPayload) {
-    return this.billingService.listInvoices(user);
+  listInvoices(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ListInvoicesQueryDto,
+  ) {
+    return this.billingService.listInvoices(user, query);
   }
 }
 

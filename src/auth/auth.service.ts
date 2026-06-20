@@ -201,7 +201,9 @@ export class AuthService {
     const isExpired = pending.expiresAt.getTime() < Date.now();
 
     if (isExpired) {
-      await this.pendingRegistrationRepository.delete({ email: normalizedEmail });
+      await this.pendingRegistrationRepository.delete({
+        email: normalizedEmail,
+      });
       throw new BadRequestException('Verification code has expired.');
     }
 
@@ -455,6 +457,24 @@ export class AuthService {
     return this.toAuthUserResponse(user, user.organization);
   }
 
+  async recordHeartbeat(userId: string): Promise<{ lastActiveAt: string }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    if (user.accountStatus === AccountStatus.SUSPENDED) {
+      throw new UnauthorizedException('Your account has been suspended.');
+    }
+
+    const now = new Date();
+    user.lastActiveAt = now;
+    await this.userRepository.save(user);
+
+    return { lastActiveAt: now.toISOString() };
+  }
+
   async validateInviteToken(token: string): Promise<InviteValidationResponse> {
     const member = await this.findValidInviteMember(token.trim());
     const organization = member.organization;
@@ -547,10 +567,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password.');
     }
 
-    const isPasswordValid = await argon2.verify(
-      pending.passwordHash,
-      password,
-    );
+    const isPasswordValid = await argon2.verify(pending.passwordHash, password);
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid email or password.');
@@ -593,7 +610,10 @@ export class AuthService {
       throw new BadRequestException('Invalid or expired invitation link.');
     }
 
-    if (!member.inviteExpiresAt || member.inviteExpiresAt.getTime() < Date.now()) {
+    if (
+      !member.inviteExpiresAt ||
+      member.inviteExpiresAt.getTime() < Date.now()
+    ) {
       throw new BadRequestException(
         'This invitation has expired. Ask your workspace admin to resend it.',
       );
@@ -645,8 +665,14 @@ export class AuthService {
     };
 
     const expiresIn = remember
-      ? this.configService.get<string>('JWT_REMEMBER_EXPIRES_IN', JWT_REMEMBER_EXPIRES_IN)
-      : this.configService.get<string>('JWT_SESSION_EXPIRES_IN', JWT_SESSION_EXPIRES_IN);
+      ? this.configService.get<string>(
+          'JWT_REMEMBER_EXPIRES_IN',
+          JWT_REMEMBER_EXPIRES_IN,
+        )
+      : this.configService.get<string>(
+          'JWT_SESSION_EXPIRES_IN',
+          JWT_SESSION_EXPIRES_IN,
+        );
 
     return this.jwtService.sign(payload, { expiresIn: expiresIn as never });
   }

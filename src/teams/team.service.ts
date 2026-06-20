@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import {
   isActiveToday,
   mapTeamMemberResponse,
@@ -36,6 +36,12 @@ import {
 } from './dto/team.dto';
 import { ProjectsService } from '../projects/projects.service';
 import { hasOrgWideProjectAccess } from '../projects/project-access.util';
+import { ListMembersQueryDto } from '../common/dto/list-members-query.dto';
+import {
+  paginateArray,
+  type PaginatedResponse,
+} from '../common/dto/pagination-query.dto';
+import { filterOrganizationMembersForList } from '../common/utils/filter-organization-members.util';
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -63,10 +69,14 @@ export class TeamService {
     private readonly userRepository: Repository<User>,
   ) {}
 
-  async listMembers(user: JwtPayload): Promise<TeamMemberResponse[]> {
+  async listMembers(
+    user: JwtPayload,
+    query: ListMembersQueryDto = {},
+  ): Promise<PaginatedResponse<TeamMemberResponse>> {
     const organization = await this.getOrganizationForUser(
       user.organizationId!,
     );
+
     let members = [...(organization.users ?? [])];
 
     if (!hasOrgWideProjectAccess(user.role)) {
@@ -74,11 +84,45 @@ export class TeamService {
       members = members.filter((member) => squadIds.has(member.id));
     }
 
+    members = filterOrganizationMembersForList(members, query.isOwnerNeeded);
     members.sort(
       (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
     );
 
-    return members.map(mapTeamMemberResponse);
+    const mapped = await this.mapMembersWithProjectCounts(
+      user.organizationId!,
+      members,
+    );
+
+    return paginateArray(mapped, query);
+  }
+
+  private async mapMembersWithProjectCounts(
+    organizationId: string,
+    members: User[],
+  ): Promise<TeamMemberResponse[]> {
+    const projectCounts =
+      await this.projectsService.countProjectMembershipsByUserIds(
+        organizationId,
+        members.map((member) => member.id),
+      );
+
+    return members.map((member) =>
+      mapTeamMemberResponse(member, projectCounts.get(member.id) ?? 0),
+    );
+  }
+
+  private async mapMemberWithProjectCount(
+    organizationId: string,
+    member: User,
+  ): Promise<TeamMemberResponse> {
+    const projectCount =
+      await this.projectsService.countProjectMembershipsForUser(
+        organizationId,
+        member.id,
+      );
+
+    return mapTeamMemberResponse(member, projectCount);
   }
 
   async getStats(user: JwtPayload): Promise<TeamStatsResponse> {
@@ -143,31 +187,20 @@ export class TeamService {
       );
     }
 
-    const existing = await this.userRepository.findOne({ where: { email } });
+    const existing = await this.userRepository.findOne({
+      where: { email, organizationId: organization.id },
+    });
 
     if (existing) {
-      if (existing.organizationId !== organization.id) {
-        throw new ConflictException('A user with this email already exists.');
-      }
+      this.rejectDuplicateInvite(existing);
+    }
 
-      if (existing.accountStatus === AccountStatus.SUSPENDED) {
-        throw new BadRequestException(
-          'This member is deactivated. Reactivate them from the members table instead.',
-        );
-      }
+    const emailUsedElsewhere = await this.userRepository.findOne({
+      where: { email },
+    });
 
-      if (
-        existing.accountStatus === AccountStatus.PENDING &&
-        existing.signupSource === SignupSource.INVITE
-      ) {
-        throw new ConflictException(
-          'This email already has a pending invitation.',
-        );
-      }
-
-      throw new ConflictException(
-        'This person is already an active team member.',
-      );
+    if (emailUsedElsewhere) {
+      throw new ConflictException('A user with this email already exists.');
     }
 
     const inviter = await this.getOrganizationMember(
@@ -178,24 +211,36 @@ export class TeamService {
     const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
     const fullName = dto.name?.trim() || this.formatNameFromEmail(email);
 
-    const member = await this.userRepository.save(
-      this.userRepository.create({
-        fullName,
-        email,
-        passwordHash: null,
-        authProvider: AuthProvider.EMAIL,
-        signupSource: SignupSource.INVITE,
-        role: dto.role,
-        emailVerificationStatus: EmailVerificationStatus.PENDING,
-        accountStatus: AccountStatus.PENDING,
-        isPlatformAdmin: false,
-        organizationId: organization.id,
-        department: dto.department ?? MemberDepartment.ENGINEERING,
-        inviteToken: token,
-        inviteExpiresAt: expiresAt,
-        invitedById: inviter.id,
-      }),
-    );
+    let member: User;
+
+    try {
+      member = await this.userRepository.save(
+        this.userRepository.create({
+          fullName,
+          email,
+          passwordHash: null,
+          authProvider: AuthProvider.EMAIL,
+          signupSource: SignupSource.INVITE,
+          role: dto.role,
+          emailVerificationStatus: EmailVerificationStatus.PENDING,
+          accountStatus: AccountStatus.PENDING,
+          isPlatformAdmin: false,
+          organizationId: organization.id,
+          department: dto.department ?? MemberDepartment.ENGINEERING,
+          inviteToken: token,
+          inviteExpiresAt: expiresAt,
+          invitedById: inviter.id,
+        }),
+      );
+    } catch (error) {
+      if (this.isUniqueEmailViolation(error)) {
+        throw new ConflictException(
+          'This email already has a pending invitation or is already a team member.',
+        );
+      }
+
+      throw error;
+    }
 
     if (dto.sendWelcomeEmail !== false) {
       await this.sendInviteEmail({
@@ -208,7 +253,7 @@ export class TeamService {
       });
     }
 
-    return mapTeamMemberResponse(member);
+    return this.mapMemberWithProjectCount(actor.organizationId!, member);
   }
 
   async updateMemberRole(
@@ -236,7 +281,7 @@ export class TeamService {
     member.role = dto.role;
     await this.userRepository.save(member);
 
-    return mapTeamMemberResponse(member);
+    return this.mapMemberWithProjectCount(actor.organizationId!, member);
   }
 
   async updateMemberStatus(
@@ -278,7 +323,39 @@ export class TeamService {
 
     await this.userRepository.save(member);
 
-    return mapTeamMemberResponse(member);
+    return this.mapMemberWithProjectCount(actor.organizationId!, member);
+  }
+
+  async deleteMember(actor: JwtPayload, memberId: string) {
+    const member = await this.getOrganizationMember(
+      actor.organizationId!,
+      memberId,
+    );
+
+    if (member.id === actor.sub) {
+      throw new BadRequestException('You cannot delete your own account.');
+    }
+
+    if (member.role === RegisterAs.OWNER) {
+      throw new ForbiddenException('The organization owner cannot be deleted.');
+    }
+
+    if (member.accountStatus !== AccountStatus.SUSPENDED) {
+      throw new BadRequestException(
+        'Only deactivated members can be permanently deleted. Deactivate the member first.',
+      );
+    }
+
+    await this.userRepository.update(
+      { invitedById: member.id },
+      { invitedById: null },
+    );
+
+    await this.userRepository.delete(member.id);
+
+    return {
+      message: `${member.fullName} has been permanently removed from the workspace.`,
+    };
   }
 
   async resendInvite(actor: JwtPayload, memberId: string) {
@@ -387,6 +464,36 @@ export class TeamService {
       inviteUrl,
       message: params.message,
     });
+  }
+
+  private rejectDuplicateInvite(existing: User) {
+    if (existing.accountStatus === AccountStatus.SUSPENDED) {
+      throw new BadRequestException(
+        'This member is deactivated. Reactivate them or permanently delete them before inviting this email again.',
+      );
+    }
+
+    if (
+      existing.accountStatus === AccountStatus.PENDING &&
+      existing.signupSource === SignupSource.INVITE
+    ) {
+      throw new ConflictException(
+        'This email already has a pending invitation.',
+      );
+    }
+
+    throw new ConflictException(
+      'This person is already an active team member.',
+    );
+  }
+
+  private isUniqueEmailViolation(error: unknown) {
+    if (!(error instanceof QueryFailedError)) {
+      return false;
+    }
+
+    const driverError = error.driverError as { code?: string };
+    return driverError.code === '23505';
   }
 
   private formatNameFromEmail(email: string) {
