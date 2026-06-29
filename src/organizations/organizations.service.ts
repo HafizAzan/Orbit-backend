@@ -23,7 +23,9 @@ import {
 import {
   mapOrganizationMembersSummary,
   mapOrganizationMemberResponse,
+  mapOrganizationAboutPersonResponse,
   mapWorkspaceOrganizationResponse,
+  type OrganizationAboutResponse,
   type OrganizationMembersSummaryResponse,
   type OrganizationMemberResponse,
   type WorkspaceOrganizationResponse,
@@ -57,7 +59,10 @@ import { UpdateWorkspaceOrganizationDto } from './dto/workspace-organization.dto
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { ListMembersQueryDto } from '../common/dto/list-members-query.dto';
 import { filterOrganizationMembersForList } from '../common/utils/filter-organization-members.util';
+import { canActorChangeMemberEmail } from '../common/utils/email-access.util';
 import { ProjectsService } from '../projects/projects.service';
+import { ActivityService } from '../activity/activity.service';
+import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import { hasOrgWideProjectAccess } from '../projects/project-access.util';
 
 const ASSIGNABLE_MEMBER_ROLES: RegisterAs[] = [
@@ -85,6 +90,7 @@ export class OrganizationsService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly projectsService: ProjectsService,
+    private readonly activityService: ActivityService,
   ) {}
 
   async findAll(
@@ -302,6 +308,70 @@ export class OrganizationsService {
     return mapOrganizationMembersSummary(members, planCode, query);
   }
 
+  async getOrganizationAbout(user: JwtPayload): Promise<OrganizationAboutResponse> {
+    if (user.role !== RegisterAs.MANAGER && user.role !== RegisterAs.MEMBER) {
+      throw new ForbiddenException(
+        'Organization overview is only available for managers and members.',
+      );
+    }
+
+    const organization = await this.getOrganizationForUser(user.organizationId!);
+    const members = organization.users ?? [];
+
+    const owner = members.find(
+      (member) =>
+        member.role === RegisterAs.OWNER &&
+        member.accountStatus !== AccountStatus.SUSPENDED,
+    );
+
+    if (!owner) {
+      throw new NotFoundException('Organization owner not found.');
+    }
+
+    const admins = members
+      .filter(
+        (member) =>
+          member.role === RegisterAs.ADMIN &&
+          member.accountStatus !== AccountStatus.SUSPENDED,
+      )
+      .sort((left, right) => left.fullName.localeCompare(right.fullName));
+
+    let managerList: User[];
+
+    if (user.role === RegisterAs.MANAGER) {
+      const self = members.find((member) => member.id === user.sub);
+
+      if (!self || self.accountStatus === AccountStatus.SUSPENDED) {
+        throw new NotFoundException('Your workspace profile was not found.');
+      }
+
+      managerList = [self];
+    } else {
+      managerList = await this.projectsService.getProjectManagersForMember(
+        user.sub,
+        user.organizationId!,
+      );
+    }
+
+    return {
+      organization: {
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+        createdAt: organization.createdAt.toISOString(),
+      },
+      owner: mapOrganizationAboutPersonResponse(owner),
+      admins: {
+        count: admins.length,
+        data: admins.map(mapOrganizationAboutPersonResponse),
+      },
+      managers: {
+        count: managerList.length,
+        data: managerList.map(mapOrganizationAboutPersonResponse),
+      },
+    };
+  }
+
   async updateMemberRole(
     actor: JwtPayload,
     memberId: string,
@@ -322,6 +392,70 @@ export class OrganizationsService {
     member.role = role;
     await this.userRepository.save(member);
 
+    await this.activityService.recordForUser(actor, {
+      module: ActivityModule.MEMBERS,
+      action: ActivityAction.ROLE_CHANGED,
+      summary: `Changed role for ${member.fullName}`,
+      targetLabel: member.fullName,
+      resourceType: 'user',
+      resourceId: member.id,
+      metadata: { role },
+    });
+
+    return mapOrganizationMemberResponse(member);
+  }
+
+  async updateMemberEmail(
+    actor: JwtPayload,
+    memberId: string,
+    email: string,
+  ): Promise<OrganizationMemberResponse> {
+    const member = await this.getOrganizationMember(actor.organizationId!, memberId);
+
+    if (member.id === actor.sub) {
+      throw new BadRequestException('You cannot change your own email from member settings.');
+    }
+
+    if (member.role === RegisterAs.OWNER) {
+      throw new ForbiddenException('The organization owner email cannot be changed here.');
+    }
+
+    if (!canActorChangeMemberEmail(actor.role, member.role)) {
+      throw new ForbiddenException(
+        'You do not have permission to change this member\'s email.',
+      );
+    }
+
+    const newEmail = email.trim().toLowerCase();
+
+    if (newEmail === member.email) {
+      throw new BadRequestException(
+        'New email must be different from the current email.',
+      );
+    }
+
+    const existingUser = await this.userRepository.findOne({
+      where: { email: newEmail },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('An account with this email already exists.');
+    }
+
+    member.email = newEmail;
+    member.emailVerificationStatus = EmailVerificationStatus.VERIFIED;
+    await this.userRepository.save(member);
+
+    await this.activityService.recordForUser(actor, {
+      module: ActivityModule.MEMBERS,
+      action: ActivityAction.EMAIL_CHANGED,
+      summary: `Updated email for ${member.fullName}`,
+      targetLabel: member.fullName,
+      resourceType: 'user',
+      resourceId: member.id,
+      metadata: { email: newEmail },
+    });
+
     return mapOrganizationMemberResponse(member);
   }
 
@@ -338,6 +472,15 @@ export class OrganizationsService {
 
     member.accountStatus = AccountStatus.SUSPENDED;
     await this.userRepository.save(member);
+
+    await this.activityService.recordForUser(actor, {
+      module: ActivityModule.MEMBERS,
+      action: ActivityAction.REMOVED,
+      summary: `Deactivated ${member.fullName}`,
+      targetLabel: member.fullName,
+      resourceType: 'user',
+      resourceId: member.id,
+    });
 
     return {
       message: `${member.fullName} has been deactivated.`,

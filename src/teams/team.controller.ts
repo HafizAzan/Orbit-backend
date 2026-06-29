@@ -40,6 +40,14 @@ export class TeamController {
     return this.teamService.getStats(user);
   }
 
+  @Delete('members/:memberId/squad')
+  removeMemberFromSquad(
+    @CurrentUser() user: JwtPayload,
+    @Param('memberId') memberId: string,
+  ) {
+    return this.teamService.removeMemberFromSquad(user, memberId);
+  }
+
   @Post('invites')
   @UseGuards(OrganizationAdminGuard)
   inviteMember(

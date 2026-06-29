@@ -5,6 +5,7 @@ import { Organization } from '../entities/organization.entity';
 import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
 import { ProjectsModule } from '../projects/projects.module';
+import { ActivityModule } from '../activity/activity.module';
 import { OrganizationsController } from './organizations.controller';
 import { WorkspaceOrganizationsController } from './workspace-organizations.controller';
 import { OrganizationsService } from './organizations.service';
@@ -16,6 +17,7 @@ import { OrganizationMemberGuard } from '../auth/guards/organization-member.guar
     TypeOrmModule.forFeature([Organization, Subscription, User]),
     forwardRef(() => AuthModule),
     forwardRef(() => ProjectsModule),
+    ActivityModule,
   ],
   controllers: [OrganizationsController, WorkspaceOrganizationsController],
   providers: [

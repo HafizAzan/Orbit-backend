@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { getClientIp } from '../common/utils/get-client-ip.util';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto';
@@ -11,6 +19,11 @@ import { ValidateResetTokenQueryDto } from '../dto/validate-reset-token-query.dt
 import { VerifyRegisterDto } from '../dto/verify-register.dto';
 import { ValidateInviteTokenQueryDto } from '../dto/validate-invite-token-query.dto';
 import { AcceptInviteDto } from '../dto/accept-invite.dto';
+import {
+  ConfirmEmailChangeDto,
+  InitiateEmailChangeDto,
+} from './dto/email-change.dto';
+import { RequestEmailChangeDto } from './dto/email-change-request.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -89,5 +102,38 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   heartbeat(@CurrentUser() user: JwtPayload) {
     return this.authService.recordHeartbeat(user.sub);
+  }
+
+  @Post('me/email/initiate')
+  @UseGuards(JwtAuthGuard)
+  initiateEmailChange(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: InitiateEmailChangeDto,
+  ) {
+    return this.authService.initiateEmailChange(user, dto);
+  }
+
+  @Post('me/email/confirm')
+  @UseGuards(JwtAuthGuard)
+  confirmEmailChange(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ConfirmEmailChangeDto,
+  ) {
+    return this.authService.confirmEmailChange(user, dto);
+  }
+
+  @Get('me/email/request-recipients')
+  @UseGuards(JwtAuthGuard)
+  getEmailChangeRequestRecipients(@CurrentUser() user: JwtPayload) {
+    return this.authService.getEmailChangeRequestRecipients(user);
+  }
+
+  @Post('me/email/request')
+  @UseGuards(JwtAuthGuard)
+  submitEmailChangeRequest(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: RequestEmailChangeDto,
+  ) {
+    return this.authService.submitEmailChangeRequest(user, dto);
   }
 }

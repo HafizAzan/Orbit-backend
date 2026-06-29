@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -21,6 +22,7 @@ import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { VerifyRegisterDto } from '../dto/verify-register.dto';
 import { Organization } from '../entities/organization.entity';
 import { PasswordReset } from '../entities/password-reset.entity';
+import { PendingEmailChange } from '../entities/pending-email-change.entity';
 import { PendingRegistration } from '../entities/pending-registration.entity';
 import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
@@ -37,6 +39,16 @@ import { EmailService } from '../email/email.service';
 import { OrganizationStatus } from '../enum/billing.enum';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { MemberDepartment } from '../enum/member.enum';
+import {
+  canChangeOwnEmail,
+  canRequestOwnEmailChange,
+  getEmailChangeRequestRecipientRoles,
+} from '../common/utils/email-access.util';
+import {
+  ConfirmEmailChangeDto,
+  InitiateEmailChangeDto,
+} from './dto/email-change.dto';
+import { RequestEmailChangeDto } from './dto/email-change-request.dto';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
@@ -81,6 +93,7 @@ export type InviteValidationResponse = {
 };
 
 const INVITE_ROLE_LABELS: Record<string, string> = {
+  [RegisterAs.OWNER]: 'Owner',
   [RegisterAs.ADMIN]: 'Admin',
   [RegisterAs.MANAGER]: 'Manager',
   [RegisterAs.MEMBER]: 'Member',
@@ -112,6 +125,8 @@ export class AuthService {
     private readonly subscriptionRepository: Repository<Subscription>,
     @InjectRepository(PasswordReset)
     private readonly passwordResetRepository: Repository<PasswordReset>,
+    @InjectRepository(PendingEmailChange)
+    private readonly pendingEmailChangeRepository: Repository<PendingEmailChange>,
   ) {}
 
   async sendRegisterOtp(dto: RegisterDto, ip: string) {
@@ -473,6 +488,287 @@ export class AuthService {
     await this.userRepository.save(user);
 
     return { lastActiveAt: now.toISOString() };
+  }
+
+  async initiateEmailChange(user: JwtPayload, dto: InitiateEmailChangeDto) {
+    if (!canChangeOwnEmail(user.role)) {
+      throw new ForbiddenException(
+        'Only the organization owner can change their own login email.',
+      );
+    }
+
+    const account = await this.userRepository.findOne({
+      where: { id: user.sub },
+    });
+
+    if (!account) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    if (!account.passwordHash) {
+      throw new BadRequestException('Password verification is required.');
+    }
+
+    const isPasswordValid = await argon2.verify(
+      account.passwordHash,
+      dto.currentPassword,
+    );
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Current password is incorrect.');
+    }
+
+    const newEmail = dto.newEmail.trim().toLowerCase();
+
+    if (newEmail === account.email) {
+      throw new BadRequestException(
+        'New email must be different from your current email.',
+      );
+    }
+
+    const existingUser = await this.userRepository.findOne({
+      where: { email: newEmail },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('An account with this email already exists.');
+    }
+
+    const otp = this.generateOtpCode();
+    const otpHash = await argon2.hash(otp);
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+
+    await this.pendingEmailChangeRepository.save({
+      userId: account.id,
+      newEmail,
+      otpHash,
+      expiresAt,
+    });
+
+    await this.emailService.sendEmailChangeOtpEmail({
+      to: newEmail,
+      fullName: account.fullName,
+      otp,
+    });
+
+    return {
+      message: `Verification code sent to ${newEmail}`,
+      email: newEmail,
+      expiresAt: expiresAt.toISOString(),
+    };
+  }
+
+  async confirmEmailChange(user: JwtPayload, dto: ConfirmEmailChangeDto) {
+    if (!canChangeOwnEmail(user.role)) {
+      throw new ForbiddenException(
+        'Only the organization owner can change their own login email.',
+      );
+    }
+
+    const account = await this.userRepository.findOne({
+      where: { id: user.sub },
+      relations: { organization: true },
+    });
+
+    if (!account) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    const newEmail = dto.newEmail.trim().toLowerCase();
+    const pending = await this.pendingEmailChangeRepository.findOne({
+      where: { userId: account.id, newEmail },
+    });
+
+    if (!pending || pending.expiresAt.getTime() < Date.now()) {
+      if (pending) {
+        await this.pendingEmailChangeRepository.delete({ userId: account.id });
+      }
+
+      throw new BadRequestException(
+        'Invalid or expired OTP. Please try again.',
+      );
+    }
+
+    const isOtpValid = await argon2.verify(pending.otpHash, dto.otp);
+
+    if (!isOtpValid) {
+      throw new BadRequestException(
+        'Invalid or expired OTP. Please try again.',
+      );
+    }
+
+    const existingUser = await this.userRepository.findOne({
+      where: { email: newEmail },
+    });
+
+    if (existingUser && existingUser.id !== account.id) {
+      throw new ConflictException('An account with this email already exists.');
+    }
+
+    account.email = newEmail;
+    account.emailVerificationStatus = EmailVerificationStatus.VERIFIED;
+    await this.userRepository.save(account);
+    await this.pendingEmailChangeRepository.delete({ userId: account.id });
+
+    if (account.role === RegisterAs.OWNER && account.organizationId) {
+      const organization = await this.organizationRepository.findOne({
+        where: { id: account.organizationId },
+      });
+
+      if (organization) {
+        organization.billingEmail = newEmail;
+        await this.organizationRepository.save(organization);
+      }
+    }
+
+    return {
+      message: 'Email address updated successfully.',
+      email: newEmail,
+      user: await this.toAuthUserResponse(account, account.organization),
+    };
+  }
+
+  async getEmailChangeRequestRecipients(user: JwtPayload) {
+    if (!canRequestOwnEmailChange(user.role)) {
+      throw new ForbiddenException('You cannot request an email change.');
+    }
+
+    if (!user.organizationId) {
+      throw new BadRequestException('Organization membership is required.');
+    }
+
+    const organization = await this.organizationRepository.findOne({
+      where: { id: user.organizationId },
+      relations: { users: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found.');
+    }
+
+    const targetRoles = getEmailChangeRequestRecipientRoles(user.role);
+    const recipients = (organization.users ?? [])
+      .filter(
+        (member) =>
+          targetRoles.includes(member.role) &&
+          member.accountStatus === AccountStatus.ACTIVE &&
+          member.id !== user.sub,
+      )
+      .sort((left, right) => left.fullName.localeCompare(right.fullName))
+      .map((member) => ({
+        id: member.id,
+        fullName: member.fullName,
+        email: member.email,
+        role: member.role,
+      }));
+
+    return { data: recipients };
+  }
+
+  async submitEmailChangeRequest(user: JwtPayload, dto: RequestEmailChangeDto) {
+    if (!canRequestOwnEmailChange(user.role)) {
+      throw new ForbiddenException('You cannot request an email change.');
+    }
+
+    if (!user.organizationId) {
+      throw new BadRequestException('Organization membership is required.');
+    }
+
+    const requester = await this.userRepository.findOne({
+      where: { id: user.sub },
+    });
+
+    if (!requester) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    const currentEmail = dto.currentEmail.trim().toLowerCase();
+    const newEmail = dto.newEmail.trim().toLowerCase();
+
+    if (currentEmail !== requester.email) {
+      throw new BadRequestException('Current email does not match your account.');
+    }
+
+    if (newEmail === currentEmail) {
+      throw new BadRequestException(
+        'New email must be different from your current email.',
+      );
+    }
+
+    const existingUser = await this.userRepository.findOne({
+      where: { email: newEmail },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('An account with this email already exists.');
+    }
+
+    const organization = await this.organizationRepository.findOne({
+      where: { id: user.organizationId },
+      relations: { users: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found.');
+    }
+
+    const targetRoles = getEmailChangeRequestRecipientRoles(user.role);
+    const eligibleRecipients = new Map(
+      (organization.users ?? [])
+        .filter(
+          (member) =>
+            targetRoles.includes(member.role) &&
+            member.accountStatus === AccountStatus.ACTIVE &&
+            member.id !== user.sub,
+        )
+        .map((member) => [member.id, member]),
+    );
+
+    const uniqueRecipientIds = [...new Set(dto.recipientIds)];
+
+    if (uniqueRecipientIds.length === 0) {
+      throw new BadRequestException('Select at least one recipient.');
+    }
+
+    const selectedRecipients = uniqueRecipientIds.map((recipientId) => {
+      const recipient = eligibleRecipients.get(recipientId);
+
+      if (!recipient) {
+        throw new BadRequestException('One or more selected recipients are invalid.');
+      }
+
+      return recipient;
+    });
+
+    const frontendUrl = this.configService.get<string>(
+      'FRONTEND_URL',
+      'http://localhost:5173',
+    );
+    const settingsUrl = `${frontendUrl.replace(/\/$/, '')}/settings`;
+    const requesterRoleLabel =
+      INVITE_ROLE_LABELS[requester.role] ?? requester.role;
+
+    await Promise.all(
+      selectedRecipients.map((recipient) =>
+        this.emailService.sendEmailChangeRequestEmail({
+          to: recipient.email,
+          recipientName: recipient.fullName,
+          requesterName: requester.fullName,
+          requesterRoleLabel,
+          organizationName: organization.name,
+          subject: dto.subject.trim(),
+          currentEmail,
+          newEmail,
+          reason: dto.reason.trim(),
+          settingsUrl,
+        }),
+      ),
+    );
+
+    return {
+      message: `Email change request sent to ${selectedRecipients.length} recipient(s).`,
+      recipientCount: selectedRecipients.length,
+    };
   }
 
   async validateInviteToken(token: string): Promise<InviteValidationResponse> {

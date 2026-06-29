@@ -27,6 +27,8 @@ import { ProjectMemberRole } from '../enum/project.enum';
 import { TaskPriority, TaskStatus } from '../enum/task.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { ProjectsService } from '../projects/projects.service';
+import { ActivityService } from '../activity/activity.service';
+import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import {
   canDeleteAnyTask,
   canModifyTask,
@@ -67,6 +69,7 @@ export class TasksService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly projectsService: ProjectsService,
+    private readonly activityService: ActivityService,
   ) {}
 
   async listTasks(
@@ -112,6 +115,12 @@ export class TasksService {
   }
 
   async createTask(user: JwtPayload, dto: CreateTaskDto) {
+    if (user.role === RegisterAs.OWNER) {
+      throw new ForbiddenException(
+        'Organization owners oversee delivery but cannot create tasks. Ask your delivery lead or admin.',
+      );
+    }
+
     const project = await this.projectsService.ensureAccessibleProject(
       user,
       dto.projectId,
@@ -143,6 +152,16 @@ export class TasksService {
 
     await this.syncProjectTaskMetrics(project.id);
 
+    await this.activityService.recordForUser(user, {
+      module: ActivityModule.TASKS,
+      action: ActivityAction.CREATED,
+      summary: `Created task ${task.title}`,
+      targetLabel: task.title,
+      resourceType: 'task',
+      resourceId: task.id,
+      projectId: project.id,
+    });
+
     return this.getTask(user, task.id);
   }
 
@@ -152,6 +171,8 @@ export class TasksService {
     if (!canModifyTask(user, task)) {
       throw new ForbiddenException('You do not have permission to edit this task.');
     }
+
+    const previousStatus = task.status;
 
     if (dto.title !== undefined) {
       task.title = dto.title.trim();
@@ -191,6 +212,24 @@ export class TasksService {
 
     await this.taskRepository.save(task);
     await this.syncProjectTaskMetrics(task.projectId);
+
+    const statusChanged =
+      dto.status !== undefined && dto.status !== previousStatus;
+
+    await this.activityService.recordForUser(user, {
+      module: ActivityModule.TASKS,
+      action: statusChanged ? ActivityAction.STATUS_CHANGED : ActivityAction.UPDATED,
+      summary: statusChanged
+        ? `Changed status of ${task.title}`
+        : `Updated task ${task.title}`,
+      targetLabel: task.title,
+      resourceType: 'task',
+      resourceId: task.id,
+      projectId: task.projectId,
+      metadata: statusChanged
+        ? { fromStatus: previousStatus, toStatus: task.status }
+        : null,
+    });
 
     return this.getTask(user, task.id);
   }
@@ -262,6 +301,7 @@ export class TasksService {
     }
 
     const projectId = task.projectId;
+    const taskTitle = task.title;
     const attachments = await this.taskAttachmentRepository.find({
       where: { taskId: task.id },
     });
@@ -272,6 +312,16 @@ export class TasksService {
 
     await this.taskRepository.delete(task.id);
     await this.syncProjectTaskMetrics(projectId);
+
+    await this.activityService.recordForUser(user, {
+      module: ActivityModule.TASKS,
+      action: ActivityAction.DELETED,
+      summary: `Deleted task ${taskTitle}`,
+      targetLabel: taskTitle,
+      resourceType: 'task',
+      resourceId: taskId,
+      projectId,
+    });
 
     return {
       message: `${task.project?.key ?? 'TASK'}-${task.taskNumber} deleted successfully.`,
@@ -360,13 +410,15 @@ export class TasksService {
         };
       });
 
+    const activity = await this.activityService.getFeed(user, 5);
+
     return {
       metrics,
       velocity,
       taskStatus,
       activeProjects,
       criticalDeadlines,
-      activity: [],
+      activity,
     };
   }
 

@@ -9,6 +9,7 @@ import type { Transporter } from 'nodemailer';
 import { buildRegisterOtpEmailHtml } from './templates/register-otp.template';
 import { buildPasswordResetEmailHtml } from './templates/password-reset.template';
 import { buildTeamInviteEmailHtml } from './templates/team-invite.template';
+import { buildEmailChangeRequestEmailHtml } from './templates/email-change-request.template';
 
 const OTP_TTL_MINUTES = 10;
 const PASSWORD_RESET_TTL_MINUTES = 60;
@@ -26,9 +27,7 @@ export class EmailService {
     const pass = this.getSmtpPassword();
 
     if (!host || !user || !pass) {
-      throw new Error(
-        'SMTP_HOST, SMTP_USER, and SMTP_PASSWORD are required.',
-      );
+      throw new Error('SMTP_HOST, SMTP_USER, and SMTP_PASSWORD are required.');
     }
 
     this.from = this.configService.get<string>(
@@ -57,6 +56,25 @@ export class EmailService {
     await this.sendEmail({
       to,
       subject: 'Your FlowSync verification code',
+      html: buildRegisterOtpEmailHtml({
+        fullName: params.fullName,
+        otp: params.otp,
+        expiresInMinutes: OTP_TTL_MINUTES,
+      }),
+      failureMessage: 'Unable to send verification email. Please try again.',
+    });
+  }
+
+  async sendEmailChangeOtpEmail(params: {
+    to: string;
+    fullName: string;
+    otp: string;
+  }): Promise<void> {
+    const to = params.to.trim().toLowerCase();
+
+    await this.sendEmail({
+      to,
+      subject: 'Confirm your new FlowSync email address',
       html: buildRegisterOtpEmailHtml({
         fullName: params.fullName,
         otp: params.otp,
@@ -109,6 +127,38 @@ export class EmailService {
         expiresInDays: 7,
       }),
       failureMessage: 'Unable to send team invitation email. Please try again.',
+    });
+  }
+
+  async sendEmailChangeRequestEmail(params: {
+    to: string;
+    recipientName: string;
+    requesterName: string;
+    requesterRoleLabel: string;
+    organizationName: string;
+    subject: string;
+    currentEmail: string;
+    newEmail: string;
+    reason: string;
+    settingsUrl: string;
+  }): Promise<void> {
+    const to = params.to.trim().toLowerCase();
+
+    await this.sendEmail({
+      to,
+      subject: params.subject.trim(),
+      html: buildEmailChangeRequestEmailHtml({
+        recipientName: params.recipientName,
+        requesterName: params.requesterName,
+        requesterRoleLabel: params.requesterRoleLabel,
+        organizationName: params.organizationName,
+        subject: params.subject.trim(),
+        currentEmail: params.currentEmail,
+        newEmail: params.newEmail,
+        reason: params.reason,
+        settingsUrl: params.settingsUrl,
+      }),
+      failureMessage: 'Unable to send email change request. Please try again.',
     });
   }
 

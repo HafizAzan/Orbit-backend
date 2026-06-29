@@ -15,6 +15,7 @@ import { OrganizationMemberGuard } from '../auth/guards/organization-member.guar
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { ListMembersQueryDto } from '../common/dto/list-members-query.dto';
 import {
+  UpdateOrganizationMemberEmailDto,
   UpdateOrganizationMemberRoleDto,
   UpdateWorkspaceOrganizationDto,
 } from './dto/workspace-organization.dto';
@@ -28,6 +29,11 @@ export class WorkspaceOrganizationsController {
   @Get('me')
   getCurrent(@CurrentUser() user: JwtPayload) {
     return this.organizationsService.getCurrentOrganization(user);
+  }
+
+  @Get('me/about')
+  getAbout(@CurrentUser() user: JwtPayload) {
+    return this.organizationsService.getOrganizationAbout(user);
   }
 
   @Patch('me')
@@ -55,6 +61,16 @@ export class WorkspaceOrganizationsController {
     @Body() dto: UpdateOrganizationMemberRoleDto,
   ) {
     return this.organizationsService.updateMemberRole(user, memberId, dto.role);
+  }
+
+  @Patch('me/members/:memberId/email')
+  @UseGuards(OrganizationAdminGuard)
+  updateMemberEmail(
+    @CurrentUser() user: JwtPayload,
+    @Param('memberId') memberId: string,
+    @Body() dto: UpdateOrganizationMemberEmailDto,
+  ) {
+    return this.organizationsService.updateMemberEmail(user, memberId, dto.email);
   }
 
   @Delete('me/members/:memberId')

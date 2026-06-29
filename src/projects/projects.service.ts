@@ -2,8 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -22,6 +24,8 @@ import { AccountStatus, RegisterAs } from '../enum/auth.enum';
 import { ProjectMemberRole } from '../enum/project.enum';
 import { TaskStatus } from '../enum/task.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
+import { ActivityService } from '../activity/activity.service';
+import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import {
   buildPaginatedResponse,
   paginateArray,
@@ -60,6 +64,8 @@ export class ProjectsService {
     private readonly organizationRepository: Repository<Organization>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @Inject(forwardRef(() => ActivityService))
+    private readonly activityService: ActivityService,
   ) {}
 
   async listProjects(user: JwtPayload, query: ListProjectsQueryDto = {}) {
@@ -136,6 +142,16 @@ export class ProjectsService {
 
     await this.syncProjectMembers(project.id, memberIds, leadUserId, true);
     await this.incrementOrganizationProjectCount(organizationId);
+
+    await this.activityService.recordForUser(user, {
+      module: ActivityModule.PROJECTS,
+      action: ActivityAction.CREATED,
+      summary: `Created project ${project.name}`,
+      targetLabel: project.name,
+      resourceType: 'project',
+      resourceId: project.id,
+      projectId: project.id,
+    });
 
     return this.getProject(user, project.id);
   }
@@ -331,6 +347,45 @@ export class ProjectsService {
     return counts.get(userId) ?? 0;
   }
 
+  async getProjectManagersForMember(memberUserId: string, organizationId: string) {
+    const memberships = await this.projectMemberRepository.find({
+      where: { userId: memberUserId },
+      select: { projectId: true },
+    });
+
+    if (memberships.length === 0) {
+      return [];
+    }
+
+    const projectIds = memberships.map((membership) => membership.projectId);
+    const projects = await this.projectRepository.find({
+      where: {
+        id: In(projectIds),
+        organizationId,
+      },
+      relations: { leadUser: true },
+    });
+
+    const managers = new Map<string, User>();
+
+    for (const project of projects) {
+      const lead = project.leadUser;
+
+      if (
+        lead &&
+        lead.role === RegisterAs.MANAGER &&
+        lead.accountStatus === AccountStatus.ACTIVE &&
+        lead.organizationId === organizationId
+      ) {
+        managers.set(lead.id, lead);
+      }
+    }
+
+    return [...managers.values()].sort((left, right) =>
+      left.fullName.localeCompare(right.fullName),
+    );
+  }
+
   async listProjectMembers(
     user: JwtPayload,
     projectId: string,
@@ -428,6 +483,102 @@ export class ProjectsService {
     await this.projectMemberRepository.delete({ projectId, userId: memberUserId });
 
     return this.listProjectMembers(user, projectId);
+  }
+
+  async removeUserFromManagedProjects(
+    actor: JwtPayload,
+    memberUserId: string,
+  ) {
+    if (hasOrgWideProjectAccess(actor.role)) {
+      throw new BadRequestException(
+        'Use organization member management to remove workspace members.',
+      );
+    }
+
+    if (actor.role !== RegisterAs.MANAGER) {
+      throw new ForbiddenException('Only managers can remove members from their team.');
+    }
+
+    if (actor.sub === memberUserId) {
+      throw new BadRequestException('You cannot remove yourself from the team.');
+    }
+
+    const member = await this.userRepository.findOne({
+      where: { id: memberUserId, organizationId: actor.organizationId! },
+    });
+
+    if (!member) {
+      throw new NotFoundException('Team member not found.');
+    }
+
+    if (
+      member.role === RegisterAs.OWNER ||
+      member.role === RegisterAs.ADMIN ||
+      member.role === RegisterAs.MANAGER
+    ) {
+      throw new ForbiddenException('You cannot remove this member from your team.');
+    }
+
+    const managedProjectIds = await this.getManagedProjectIds(actor);
+
+    if (managedProjectIds.length === 0) {
+      throw new BadRequestException('You do not manage any projects yet.');
+    }
+
+    const projects = await this.projectRepository.find({
+      where: { id: In(managedProjectIds) },
+      select: { id: true, leadUserId: true },
+    });
+
+    let removedCount = 0;
+
+    for (const project of projects) {
+      if (project.leadUserId === memberUserId) {
+        continue;
+      }
+
+      const result = await this.projectMemberRepository.delete({
+        projectId: project.id,
+        userId: memberUserId,
+      });
+
+      removedCount += result.affected ?? 0;
+    }
+
+    if (removedCount === 0) {
+      throw new BadRequestException(
+        'This member is not assigned to any project you manage.',
+      );
+    }
+
+    return {
+      message: `${member.fullName} removed from your team.`,
+      removedFromProjects: removedCount,
+    };
+  }
+
+  private async getManagedProjectIds(user: JwtPayload) {
+    const projectIds = await this.resolveAccessibleProjectIds(user);
+
+    if (projectIds.length === 0) {
+      return [];
+    }
+
+    const projects = await this.projectRepository.find({
+      where: { id: In(projectIds) },
+      relations: { members: true },
+    });
+
+    return projects
+      .filter((project) => {
+        if (project.leadUserId === user.sub) {
+          return true;
+        }
+
+        const membership = this.findMembership(project.members ?? [], user.sub);
+        return membership?.role === ProjectMemberRole.ADMIN;
+      })
+      .map((project) => project.id);
   }
 
   private async findAccessibleProjects(user: JwtPayload) {

@@ -19,6 +19,7 @@ import { TeamModule } from './teams/team.module';
 import { ProjectsModule } from './projects/projects.module';
 import { TasksModule } from './tasks/tasks.module';
 import { CalendarModule } from './calendar/calendar.module';
+import { ActivityModule } from './activity/activity.module';
 
 // module decorator
 @Module({
@@ -54,6 +55,7 @@ import { CalendarModule } from './calendar/calendar.module';
     ProjectsModule,
     TasksModule,
     CalendarModule,
+    ActivityModule,
   ],
   controllers: [AppController],
   providers: [

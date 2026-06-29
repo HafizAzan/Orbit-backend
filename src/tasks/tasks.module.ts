@@ -7,6 +7,7 @@ import { TaskAttachment } from '../entities/task-attachment.entity';
 import { User } from '../entities/user.entity';
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
 import { ProjectsModule } from '../projects/projects.module';
+import { ActivityModule } from '../activity/activity.module';
 import { TasksController } from './tasks.controller';
 import { TasksService } from './tasks.service';
 
@@ -15,6 +16,7 @@ import { TasksService } from './tasks.service';
     TypeOrmModule.forFeature([Task, TaskAttachment, Project, User]),
     forwardRef(() => AuthModule),
     forwardRef(() => ProjectsModule),
+    ActivityModule,
   ],
   controllers: [TasksController],
   providers: [TasksService, OrganizationMemberGuard],

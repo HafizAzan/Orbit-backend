@@ -5,6 +5,7 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Organization } from '../entities/organization.entity';
 import { PasswordReset } from '../entities/password-reset.entity';
+import { PendingEmailChange } from '../entities/pending-email-change.entity';
 import { PendingRegistration } from '../entities/pending-registration.entity';
 import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
@@ -21,7 +22,7 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Organization, PendingRegistration, PasswordReset, Subscription]),
+    TypeOrmModule.forFeature([User, Organization, PendingRegistration, PasswordReset, Subscription, PendingEmailChange]),
     EmailModule,
     forwardRef(() => OrganizationsModule),
     PassportModule.register({ defaultStrategy: 'jwt' }),

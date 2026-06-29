@@ -11,6 +11,8 @@ import { randomBytes } from 'crypto';
 import { QueryFailedError, Repository } from 'typeorm';
 import {
   isActiveToday,
+  isActiveOnDate,
+  buildActiveTodayTrend,
   mapTeamMemberResponse,
   type TeamMemberResponse,
   type TeamStatsResponse,
@@ -35,6 +37,8 @@ import {
   UpdateTeamMemberStatusDto,
 } from './dto/team.dto';
 import { ProjectsService } from '../projects/projects.service';
+import { ActivityService } from '../activity/activity.service';
+import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import { hasOrgWideProjectAccess } from '../projects/project-access.util';
 import { ListMembersQueryDto } from '../common/dto/list-members-query.dto';
 import {
@@ -63,6 +67,7 @@ export class TeamService {
     private readonly configService: ConfigService,
     private readonly emailService: EmailService,
     private readonly projectsService: ProjectsService,
+    private readonly activityService: ActivityService,
     @InjectRepository(Organization)
     private readonly organizationRepository: Repository<Organization>,
     @InjectRepository(User)
@@ -154,19 +159,27 @@ export class TeamService {
         isActiveToday(member.lastActiveAt),
     ).length;
 
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const activeWeekAgo = members.filter(
+      (member) =>
+        member.accountStatus === AccountStatus.ACTIVE &&
+        isActiveOnDate(member.lastActiveAt, weekAgo),
+    ).length;
+
     return {
       totalSeats: {
         used: occupiedSeats,
         total: totalSeats,
       },
       pendingInvites,
-      activeToday:
-        activeToday ||
-        members.filter(
-          (member) => member.accountStatus === AccountStatus.ACTIVE,
-        ).length,
-      activeTodayTrend: '+0% from last week',
+      activeToday,
+      activeTodayTrend: buildActiveTodayTrend(activeToday, activeWeekAgo),
     };
+  }
+
+  async removeMemberFromSquad(actor: JwtPayload, memberId: string) {
+    return this.projectsService.removeUserFromManagedProjects(actor, memberId);
   }
 
   async inviteMember(
@@ -253,6 +266,15 @@ export class TeamService {
       });
     }
 
+    await this.activityService.recordForUser(actor, {
+      module: ActivityModule.TEAMS,
+      action: ActivityAction.INVITED,
+      summary: `Invited ${member.fullName} as ${ROLE_LABELS[dto.role] ?? dto.role}`,
+      targetLabel: member.fullName,
+      resourceType: 'user',
+      resourceId: member.id,
+    });
+
     return this.mapMemberWithProjectCount(actor.organizationId!, member);
   }
 
@@ -280,6 +302,16 @@ export class TeamService {
 
     member.role = dto.role;
     await this.userRepository.save(member);
+
+    await this.activityService.recordForUser(actor, {
+      module: ActivityModule.TEAMS,
+      action: ActivityAction.ROLE_CHANGED,
+      summary: `Changed role for ${member.fullName}`,
+      targetLabel: member.fullName,
+      resourceType: 'user',
+      resourceId: member.id,
+      metadata: { role: dto.role },
+    });
 
     return this.mapMemberWithProjectCount(actor.organizationId!, member);
   }

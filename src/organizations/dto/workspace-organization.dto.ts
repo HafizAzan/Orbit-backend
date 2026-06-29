@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsEmail,
   IsEnum,
   IsOptional,
   IsString,
@@ -30,4 +31,9 @@ export class UpdateWorkspaceOrganizationDto {
 export class UpdateOrganizationMemberRoleDto {
   @IsEnum(RegisterAs)
   role: RegisterAs;
+}
+
+export class UpdateOrganizationMemberEmailDto {
+  @IsEmail()
+  email: string;
 }

@@ -37,6 +37,31 @@ export type OrganizationMembersSummaryResponse = {
   totalSeats: number;
 } & PaginatedResponse<OrganizationMemberResponse>;
 
+export type OrganizationAboutPersonResponse = {
+  id: string;
+  fullName: string;
+  email: string;
+  role: RegisterAs;
+};
+
+export type OrganizationAboutResponse = {
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+    createdAt: string;
+  };
+  owner: OrganizationAboutPersonResponse;
+  admins: {
+    count: number;
+    data: OrganizationAboutPersonResponse[];
+  };
+  managers: {
+    count: number;
+    data: OrganizationAboutPersonResponse[];
+  };
+};
+
 const WORKSPACE_SEAT_LIMITS: Record<string, number> = {
   FREE: 5,
   PRO: 50,
@@ -53,6 +78,17 @@ export function mapOrganizationMemberResponse(user: User): OrganizationMemberRes
     accountStatus: user.accountStatus,
     emailVerificationStatus: user.emailVerificationStatus,
     joinedAt: user.createdAt.toISOString(),
+  };
+}
+
+export function mapOrganizationAboutPersonResponse(
+  user: User,
+): OrganizationAboutPersonResponse {
+  return {
+    id: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role,
   };
 }
 

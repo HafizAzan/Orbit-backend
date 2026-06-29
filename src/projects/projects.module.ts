@@ -8,6 +8,7 @@ import { Project } from '../entities/project.entity';
 import { Task } from '../entities/task.entity';
 import { User } from '../entities/user.entity';
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
+import { ActivityModule } from '../activity/activity.module';
 import { ProjectCommentsService } from './project-comments.service';
 import { ProjectsController } from './projects.controller';
 import { ProjectsService } from './projects.service';
@@ -23,6 +24,7 @@ import { ProjectsService } from './projects.service';
       User,
     ]),
     forwardRef(() => AuthModule),
+    forwardRef(() => ActivityModule),
   ],
   controllers: [ProjectsController],
   providers: [ProjectsService, ProjectCommentsService, OrganizationMemberGuard],

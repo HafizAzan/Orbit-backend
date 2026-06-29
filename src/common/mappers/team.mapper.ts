@@ -135,3 +135,22 @@ export function isActiveToday(date: Date | null) {
     date.getDate() === now.getDate()
   );
 }
+
+export function isActiveOnDate(date: Date | null, reference: Date) {
+  if (!date) return false;
+
+  return (
+    date.getFullYear() === reference.getFullYear() &&
+    date.getMonth() === reference.getMonth() &&
+    date.getDate() === reference.getDate()
+  );
+}
+
+export function buildActiveTodayTrend(activeToday: number, activeWeekAgo: number) {
+  if (activeWeekAgo === 0) {
+    return activeToday > 0 ? 'New activity today' : 'No activity on this day last week';
+  }
+
+  const change = Math.round(((activeToday - activeWeekAgo) / activeWeekAgo) * 100);
+  return `${change >= 0 ? '+' : ''}${change}% vs same day last week`;
+}
