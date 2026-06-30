@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import type { TeamMemberProjectDetail } from '../common/mappers/team.mapper';
 import {
   mapAssignableProjectMember,
   mapWorkspaceProjectResponse,
@@ -345,6 +346,84 @@ export class ProjectsService {
     ]);
 
     return counts.get(userId) ?? 0;
+  }
+
+  async getMemberProjectTaskBreakdown(
+    actor: JwtPayload,
+    memberUserId: string,
+  ): Promise<TeamMemberProjectDetail[]> {
+    const organizationId = actor.organizationId!;
+
+    const memberships = await this.projectMemberRepository.find({
+      where: { userId: memberUserId },
+      relations: { project: true },
+    });
+
+    let visibleMemberships = memberships.filter(
+      (membership) => membership.project?.organizationId === organizationId,
+    );
+
+    if (!hasOrgWideProjectAccess(actor.role)) {
+      const accessibleProjectIds = new Set(
+        await this.resolveAccessibleProjectIds(actor),
+      );
+      visibleMemberships = visibleMemberships.filter((membership) =>
+        accessibleProjectIds.has(membership.projectId),
+      );
+    }
+
+    if (visibleMemberships.length === 0) {
+      return [];
+    }
+
+    const projectIds = visibleMemberships.map((membership) => membership.projectId);
+
+    const taskRows = await this.taskRepository
+      .createQueryBuilder('task')
+      .select('task.project_id', 'projectId')
+      .addSelect('COUNT(*)', 'assignedTasks')
+      .addSelect(
+        'SUM(CASE WHEN task.status = :doneStatus THEN 1 ELSE 0 END)',
+        'completedTasks',
+      )
+      .where('task.organization_id = :organizationId', { organizationId })
+      .andWhere('task.assignee_id = :memberUserId', { memberUserId })
+      .andWhere('task.project_id IN (:...projectIds)', { projectIds })
+      .setParameter('doneStatus', TaskStatus.DONE)
+      .groupBy('task.project_id')
+      .getRawMany<{
+        projectId: string;
+        assignedTasks: string;
+        completedTasks: string;
+      }>();
+
+    const taskCountsByProjectId = new Map(
+      taskRows.map((row) => [
+        row.projectId,
+        {
+          assignedTasks: Number(row.assignedTasks ?? 0),
+          completedTasks: Number(row.completedTasks ?? 0),
+        },
+      ]),
+    );
+
+    return visibleMemberships
+      .map((membership) => {
+        const counts = taskCountsByProjectId.get(membership.projectId) ?? {
+          assignedTasks: 0,
+          completedTasks: 0,
+        };
+
+        return {
+          projectId: membership.projectId,
+          projectKey: membership.project.key,
+          projectName: membership.project.name,
+          projectRole: membership.role,
+          assignedTasks: counts.assignedTasks,
+          completedTasks: counts.completedTasks,
+        };
+      })
+      .sort((left, right) => left.projectName.localeCompare(right.projectName));
   }
 
   async getProjectManagersForMember(memberUserId: string, organizationId: string) {

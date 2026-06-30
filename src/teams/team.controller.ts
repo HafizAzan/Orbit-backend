@@ -40,6 +40,14 @@ export class TeamController {
     return this.teamService.getStats(user);
   }
 
+  @Get('members/:memberId/detail')
+  getMemberDetail(
+    @CurrentUser() user: JwtPayload,
+    @Param('memberId') memberId: string,
+  ) {
+    return this.teamService.getMemberDetail(user, memberId);
+  }
+
   @Delete('members/:memberId/squad')
   removeMemberFromSquad(
     @CurrentUser() user: JwtPayload,

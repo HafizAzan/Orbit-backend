@@ -20,6 +20,21 @@ export type TeamMemberResponse = {
   lastActive: string;
 };
 
+export type TeamMemberProjectDetail = {
+  projectId: string;
+  projectKey: string;
+  projectName: string;
+  projectRole: string;
+  assignedTasks: number;
+  completedTasks: number;
+};
+
+export type TeamMemberDetailResponse = TeamMemberResponse & {
+  totalAssignedTasks: number;
+  completedAssignedTasks: number;
+  projectsDetail: TeamMemberProjectDetail[];
+};
+
 export type TeamStatsResponse = {
   totalSeats: {
     used: number;

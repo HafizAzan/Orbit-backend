@@ -14,6 +14,7 @@ import {
   isActiveOnDate,
   buildActiveTodayTrend,
   mapTeamMemberResponse,
+  type TeamMemberDetailResponse,
   type TeamMemberResponse,
   type TeamStatsResponse,
 } from '../common/mappers/team.mapper';
@@ -100,6 +101,47 @@ export class TeamService {
     );
 
     return paginateArray(mapped, query);
+  }
+
+  async getMemberDetail(
+    actor: JwtPayload,
+    memberId: string,
+  ): Promise<TeamMemberDetailResponse> {
+    const member = await this.getOrganizationMember(actor.organizationId!, memberId);
+    await this.ensureMemberVisibleToActor(actor, member);
+
+    const [baseMember, projectsDetail] = await Promise.all([
+      this.mapMemberWithProjectCount(actor.organizationId!, member),
+      this.projectsService.getMemberProjectTaskBreakdown(actor, memberId),
+    ]);
+
+    const totalAssignedTasks = projectsDetail.reduce(
+      (sum, project) => sum + project.assignedTasks,
+      0,
+    );
+    const completedAssignedTasks = projectsDetail.reduce(
+      (sum, project) => sum + project.completedTasks,
+      0,
+    );
+
+    return {
+      ...baseMember,
+      totalAssignedTasks,
+      completedAssignedTasks,
+      projectsDetail,
+    };
+  }
+
+  private async ensureMemberVisibleToActor(actor: JwtPayload, member: User) {
+    if (hasOrgWideProjectAccess(actor.role)) {
+      return;
+    }
+
+    const squadIds = await this.projectsService.getSquadUserIds(actor);
+
+    if (!squadIds.has(member.id)) {
+      throw new ForbiddenException('You do not have access to this team member.');
+    }
   }
 
   private async mapMembersWithProjectCounts(
