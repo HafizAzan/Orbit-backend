@@ -16,6 +16,8 @@ import {
   buildPaginatedResponse,
   resolvePagination,
 } from '../common/dto/pagination-query.dto';
+import { NotificationsService } from '../notifications/notifications.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateProjectCommentDto } from './dto/project-comment.dto';
 import { ListProjectCommentsQueryDto } from './dto/project-list-query.dto';
 import { ProjectsService } from './projects.service';
@@ -28,6 +30,8 @@ export class ProjectCommentsService {
     @InjectRepository(Project)
     private readonly projectRepository: Repository<Project>,
     private readonly projectsService: ProjectsService,
+    private readonly realtimeService: RealtimeService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async listComments(
@@ -61,6 +65,15 @@ export class ProjectCommentsService {
   ): Promise<ProjectCommentResponse> {
     await this.projectsService.ensureAccessibleProject(user, projectId, true);
 
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId },
+      relations: { members: true },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found.');
+    }
+
     const comment = await this.commentRepository.save(
       this.commentRepository.create({
         projectId,
@@ -80,7 +93,32 @@ export class ProjectCommentsService {
       throw new NotFoundException('Comment not found.');
     }
 
-    return mapProjectCommentResponse(saved);
+    const response = mapProjectCommentResponse(saved);
+
+    this.realtimeService.emitToProject(projectId, 'project:comment:created', {
+      projectId,
+      comment: response,
+    });
+
+    const memberUserIds = (project.members ?? []).map((member) => member.userId);
+    const authorName = saved.author?.fullName ?? 'Someone';
+    const preview =
+      response.message.length > 80
+        ? `${response.message.slice(0, 80)}…`
+        : response.message;
+
+    void this.notificationsService.notifyProjectMembers({
+      organizationId: project.organizationId,
+      projectId,
+      projectName: project.name,
+      actorUserId: user.sub,
+      memberUserIds,
+      title: 'New project comment',
+      message: `${authorName} commented on ${project.name}: "${preview}"`,
+      href: `/projects/${projectId}`,
+    });
+
+    return response;
   }
 
   async deleteComment(
@@ -104,6 +142,11 @@ export class ProjectCommentsService {
 
     await this.commentRepository.delete(comment.id);
     await this.projectRepository.decrement({ id: projectId }, 'commentCount', 1);
+
+    this.realtimeService.emitToProject(projectId, 'project:comment:deleted', {
+      projectId,
+      commentId,
+    });
 
     return {
       message: 'Comment deleted.',

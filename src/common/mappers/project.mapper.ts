@@ -4,8 +4,13 @@ import { User } from '../../entities/user.entity';
 import {
   ProjectCategory,
   ProjectMemberRole,
+  ProjectTheme,
 } from '../../enum/project.enum';
 import { pickAvatarColor } from './team.mapper';
+import {
+  getProjectThemeMeta,
+  type ProjectThemeMeta,
+} from './project-theme.mapper';
 
 export type ProjectMemberSummary = {
   id: string;
@@ -24,6 +29,7 @@ export type WorkspaceProjectResponse = {
   priority: string;
   category: string;
   visibility: string;
+  theme: string;
   teamId: string;
   progress: number;
   dueDate: string | null;
@@ -35,6 +41,17 @@ export type WorkspaceProjectResponse = {
   icon: 'design' | 'mobile' | 'security' | 'migration';
   iconBg: string;
   iconColor: string;
+  themeMeta: Pick<
+    ProjectThemeMeta,
+    | 'accent'
+    | 'accentSoft'
+    | 'accentText'
+    | 'headerFrom'
+    | 'headerTo'
+    | 'cardBorder'
+    | 'pillBg'
+    | 'previewGradient'
+  >;
   leadUserId: string | null;
   createdById: string;
   members: ProjectMemberSummary[];
@@ -100,8 +117,19 @@ export function mapWorkspaceProjectResponse(
   project: Project,
   viewerRole: WorkspaceProjectResponse['viewerRole'] = null,
   taskStats?: ProjectTaskStats,
+  viewerTheme: ProjectTheme = ProjectTheme.CLASSIC,
 ): WorkspaceProjectResponse {
-  const iconMeta = CATEGORY_ICON[project.category] ?? CATEGORY_ICON[ProjectCategory.PRODUCT];
+  const categoryMeta =
+    CATEGORY_ICON[project.category] ?? CATEGORY_ICON[ProjectCategory.PRODUCT];
+  const themeMeta = getProjectThemeMeta(viewerTheme);
+  const useCustomTheme = viewerTheme !== ProjectTheme.CLASSIC;
+  const iconMeta = useCustomTheme
+    ? {
+        ...categoryMeta,
+        iconBg: themeMeta.iconBg,
+        iconColor: themeMeta.iconColor,
+      }
+    : categoryMeta;
   const members = (project.members ?? [])
     .filter((membership) => membership.user)
     .map(mapProjectMemberSummary);
@@ -115,6 +143,7 @@ export function mapWorkspaceProjectResponse(
     priority: project.priority,
     category: project.category,
     visibility: project.visibility,
+    theme: viewerTheme,
     teamId: iconMeta.teamId,
     progress: project.progress,
     dueDate: project.dueDate,
@@ -130,6 +159,16 @@ export function mapWorkspaceProjectResponse(
     icon: iconMeta.icon,
     iconBg: iconMeta.iconBg,
     iconColor: iconMeta.iconColor,
+    themeMeta: {
+      accent: themeMeta.accent,
+      accentSoft: themeMeta.accentSoft,
+      accentText: themeMeta.accentText,
+      headerFrom: themeMeta.headerFrom,
+      headerTo: themeMeta.headerTo,
+      cardBorder: themeMeta.cardBorder,
+      pillBg: themeMeta.pillBg,
+      previewGradient: themeMeta.previewGradient,
+    },
     leadUserId: project.leadUserId,
     createdById: project.createdById,
     members,

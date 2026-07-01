@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { TASK_UPLOADS_ROOT } from './tasks/task-attachment.storage';
@@ -28,6 +29,8 @@ async function bootstrap() {
   if (isProduction) {
     app.set('trust proxy', 1);
   }
+
+  app.useWebSocketAdapter(new IoAdapter(app));
 
   app.useBodyParser('json', { limit: '100kb' });
   app.useBodyParser('urlencoded', { extended: true, limit: '100kb' });

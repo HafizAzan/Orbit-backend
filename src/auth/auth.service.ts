@@ -2,8 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  forwardRef,
   HttpException,
   HttpStatus,
+  Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -38,7 +40,11 @@ import type { JwtPayload } from './jwt/jwt-payload.type';
 import { EmailService } from '../email/email.service';
 import { OrganizationStatus } from '../enum/billing.enum';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { MemberDepartment } from '../enum/member.enum';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateUiThemeDto } from './dto/update-ui-theme.dto';
 import {
   canChangeOwnEmail,
   canRequestOwnEmailChange,
@@ -70,6 +76,7 @@ export type AuthUserResponse = {
     name: string;
   } | null;
   requiresPlanSelection: boolean;
+  uiTheme: string;
 };
 
 export type AuthSessionResponse = {
@@ -127,6 +134,8 @@ export class AuthService {
     private readonly passwordResetRepository: Repository<PasswordReset>,
     @InjectRepository(PendingEmailChange)
     private readonly pendingEmailChangeRepository: Repository<PendingEmailChange>,
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async sendRegisterOtp(dto: RegisterDto, ip: string) {
@@ -468,6 +477,76 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('User not found.');
     }
+
+    return this.toAuthUserResponse(user, user.organization);
+  }
+
+  async updateProfile(
+    userId: string,
+    dto: UpdateProfileDto,
+  ): Promise<AuthUserResponse> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: { organization: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    user.fullName = dto.fullName;
+    await this.userRepository.save(user);
+
+    return this.toAuthUserResponse(user, user.organization);
+  }
+
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    if (!user.passwordHash) {
+      throw new BadRequestException('Password verification is required.');
+    }
+
+    const isPasswordValid = await argon2.verify(
+      user.passwordHash,
+      dto.currentPassword,
+    );
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Current password is incorrect.');
+    }
+
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException(
+        'New password must be different from your current password.',
+      );
+    }
+
+    user.passwordHash = await argon2.hash(dto.newPassword);
+    await this.userRepository.save(user);
+
+    return { message: 'Password updated successfully' };
+  }
+
+  async updateUiTheme(userId: string, dto: UpdateUiThemeDto): Promise<AuthUserResponse> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: { organization: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    user.uiTheme = dto.uiTheme;
+    await this.userRepository.save(user);
 
     return this.toAuthUserResponse(user, user.organization);
   }
@@ -822,7 +901,18 @@ export class AuthService {
     member.inviteExpiresAt = null;
     member.lastActiveAt = new Date();
 
+    const inviterUserId = member.invitedById;
+
     await this.userRepository.save(member);
+
+    if (inviterUserId && organization.id) {
+      void this.notificationsService.notifyInviteAccepted({
+        organizationId: organization.id,
+        inviterUserId,
+        memberUserId: member.id,
+        memberName: fullName,
+      });
+    }
 
     return {
       message: `Welcome to ${organization.name}, ${fullName}.`,
@@ -996,6 +1086,7 @@ export class AuthService {
           }
         : null,
       requiresPlanSelection: await this.resolveRequiresPlanSelection(user),
+      uiTheme: user.uiTheme,
     };
   }
 }

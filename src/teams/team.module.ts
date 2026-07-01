@@ -8,6 +8,7 @@ import { OrganizationAdminGuard } from '../auth/guards/organization-admin.guard'
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
 import { ProjectsModule } from '../projects/projects.module';
 import { ActivityModule } from '../activity/activity.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { TeamController } from './team.controller';
 import { TeamService } from './team.service';
 
@@ -18,6 +19,7 @@ import { TeamService } from './team.service';
     forwardRef(() => AuthModule),
     forwardRef(() => ProjectsModule),
     ActivityModule,
+    NotificationsModule,
   ],
   controllers: [TeamController],
   providers: [TeamService, OrganizationMemberGuard, OrganizationAdminGuard],

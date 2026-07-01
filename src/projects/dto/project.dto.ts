@@ -18,6 +18,7 @@ import {
   ProjectMemberRole,
   ProjectPriority,
   ProjectStatus,
+  ProjectTheme,
   ProjectVisibility,
 } from '../../enum/project.enum';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
@@ -145,3 +146,8 @@ export class AddProjectMemberDto {
 }
 
 export class ListProjectsQueryDto extends PaginationQueryDto {}
+
+export class UpdateMyProjectThemeDto {
+  @IsEnum(ProjectTheme)
+  theme: ProjectTheme;
+}

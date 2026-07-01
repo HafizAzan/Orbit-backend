@@ -39,6 +39,7 @@ import {
 } from './dto/team.dto';
 import { ProjectsService } from '../projects/projects.service';
 import { ActivityService } from '../activity/activity.service';
+import { PresenceService } from '../realtime/presence.service';
 import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import { hasOrgWideProjectAccess } from '../projects/project-access.util';
 import { ListMembersQueryDto } from '../common/dto/list-members-query.dto';
@@ -69,6 +70,7 @@ export class TeamService {
     private readonly emailService: EmailService,
     private readonly projectsService: ProjectsService,
     private readonly activityService: ActivityService,
+    private readonly presenceService: PresenceService,
     @InjectRepository(Organization)
     private readonly organizationRepository: Repository<Organization>,
     @InjectRepository(User)
@@ -218,6 +220,10 @@ export class TeamService {
       activeToday,
       activeTodayTrend: buildActiveTodayTrend(activeToday, activeWeekAgo),
     };
+  }
+
+  getPresence(user: JwtPayload) {
+    return this.presenceService.getOrgPresence(user.organizationId!);
   }
 
   async removeMemberFromSquad(actor: JwtPayload, memberId: string) {

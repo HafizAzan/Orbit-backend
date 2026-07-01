@@ -28,6 +28,7 @@ import { TaskPriority, TaskStatus } from '../enum/task.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { ProjectsService } from '../projects/projects.service';
 import { ActivityService } from '../activity/activity.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import {
   canDeleteAnyTask,
@@ -70,6 +71,7 @@ export class TasksService {
     private readonly userRepository: Repository<User>,
     private readonly projectsService: ProjectsService,
     private readonly activityService: ActivityService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async listTasks(
@@ -162,6 +164,19 @@ export class TasksService {
       projectId: project.id,
     });
 
+    if (task.assigneeId) {
+      const actorName = await this.getUserDisplayName(user.sub);
+      void this.notificationsService.notifyTaskAssigned({
+        organizationId: user.organizationId!,
+        assigneeId: task.assigneeId,
+        actorUserId: user.sub,
+        actorName,
+        taskId: task.id,
+        taskTitle: task.title,
+        projectName: project.name,
+      });
+    }
+
     return this.getTask(user, task.id);
   }
 
@@ -173,6 +188,7 @@ export class TasksService {
     }
 
     const previousStatus = task.status;
+    const previousAssigneeId = task.assigneeId;
 
     if (dto.title !== undefined) {
       task.title = dto.title.trim();
@@ -230,6 +246,32 @@ export class TasksService {
         ? { fromStatus: previousStatus, toStatus: task.status }
         : null,
     });
+
+    const assigneeChanged =
+      dto.assigneeId !== undefined && dto.assigneeId !== previousAssigneeId;
+
+    if (assigneeChanged && task.assigneeId) {
+      const actorName = await this.getUserDisplayName(user.sub);
+      const projectName =
+        task.project?.name ??
+        (
+          await this.projectRepository.findOne({
+            where: { id: task.projectId },
+            select: { name: true },
+          })
+        )?.name ??
+        'a project';
+
+      void this.notificationsService.notifyTaskAssigned({
+        organizationId: user.organizationId!,
+        assigneeId: task.assigneeId,
+        actorUserId: user.sub,
+        actorName,
+        taskId: task.id,
+        taskTitle: task.title,
+        projectName,
+      });
+    }
 
     return this.getTask(user, task.id);
   }
@@ -737,5 +779,10 @@ export class TasksService {
     } catch {
       // Ignore missing files on disk.
     }
+  }
+
+  private async getUserDisplayName(userId: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    return user?.fullName ?? 'Someone';
   }
 }

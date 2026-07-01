@@ -11,6 +11,7 @@ import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
 import { EmailModule } from '../email/email.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt/jwt.strategy';
@@ -25,6 +26,7 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
     TypeOrmModule.forFeature([User, Organization, PendingRegistration, PasswordReset, Subscription, PendingEmailChange]),
     EmailModule,
     forwardRef(() => OrganizationsModule),
+    forwardRef(() => NotificationsModule),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

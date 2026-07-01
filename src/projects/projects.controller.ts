@@ -19,6 +19,7 @@ import {
   ListProjectsQueryDto,
   UpdateProjectDto,
   UpdateProjectMemberRoleDto,
+  UpdateMyProjectThemeDto,
 } from './dto/project.dto';
 import { CreateProjectCommentDto } from './dto/project-comment.dto';
 import {
@@ -26,6 +27,7 @@ import {
   ListProjectCommentsQueryDto,
   ListProjectMembersQueryDto,
 } from './dto/project-list-query.dto';
+import { listProjectThemes } from '../common/mappers/project-theme.mapper';
 import { ProjectCommentsService } from './project-comments.service';
 import { ProjectsService } from './projects.service';
 
@@ -53,6 +55,11 @@ export class ProjectsController {
     return this.projectsService.listAssignableMembers(user, query);
   }
 
+  @Get('themes/list')
+  listProjectThemes() {
+    return listProjectThemes();
+  }
+
   @Get(':projectId')
   getProject(
     @CurrentUser() user: JwtPayload,
@@ -67,6 +74,15 @@ export class ProjectsController {
     @Body() dto: CreateProjectDto,
   ) {
     return this.projectsService.createProject(user, dto);
+  }
+
+  @Patch(':projectId/my-theme')
+  updateMyProjectTheme(
+    @CurrentUser() user: JwtPayload,
+    @Param('projectId') projectId: string,
+    @Body() dto: UpdateMyProjectThemeDto,
+  ) {
+    return this.projectsService.updateMyProjectTheme(user, projectId, dto);
   }
 
   @Patch(':projectId')

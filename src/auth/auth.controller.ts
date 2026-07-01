@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Patch,
   Post,
   Query,
   Req,
@@ -24,6 +25,9 @@ import {
   InitiateEmailChangeDto,
 } from './dto/email-change.dto';
 import { RequestEmailChangeDto } from './dto/email-change-request.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateUiThemeDto } from './dto/update-ui-theme.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -96,6 +100,33 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   getMe(@CurrentUser() user: JwtPayload) {
     return this.authService.getMe(user.sub);
+  }
+
+  @Patch('me/profile')
+  @UseGuards(JwtAuthGuard)
+  updateProfile(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(user.sub, dto);
+  }
+
+  @Patch('me/password')
+  @UseGuards(JwtAuthGuard)
+  changePassword(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(user.sub, dto);
+  }
+
+  @Patch('me/ui-theme')
+  @UseGuards(JwtAuthGuard)
+  updateUiTheme(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateUiThemeDto,
+  ) {
+    return this.authService.updateUiTheme(user.sub, dto);
   }
 
   @Post('heartbeat')

@@ -28,3 +28,12 @@ export enum ProjectMemberRole {
   MEMBER = 'member',
   VIEWER = 'viewer',
 }
+
+export enum ProjectTheme {
+  CLASSIC = 'classic',
+  OCEAN = 'ocean',
+  SUNSET = 'sunset',
+  FOREST = 'forest',
+  ROYAL = 'royal',
+  MIDNIGHT = 'midnight',
+}

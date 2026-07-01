@@ -40,6 +40,11 @@ export class TeamController {
     return this.teamService.getStats(user);
   }
 
+  @Get('presence')
+  getPresence(@CurrentUser() user: JwtPayload) {
+    return this.teamService.getPresence(user);
+  }
+
   @Get('members/:memberId/detail')
   getMemberDetail(
     @CurrentUser() user: JwtPayload,

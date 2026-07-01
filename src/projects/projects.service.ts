@@ -18,11 +18,12 @@ import {
 } from '../common/mappers/project.mapper';
 import { Organization } from '../entities/organization.entity';
 import { ProjectMember } from '../entities/project-member.entity';
+import { ProjectUserTheme } from '../entities/project-user-theme.entity';
 import { Project } from '../entities/project.entity';
 import { Task } from '../entities/task.entity';
 import { User } from '../entities/user.entity';
 import { AccountStatus, RegisterAs } from '../enum/auth.enum';
-import { ProjectMemberRole } from '../enum/project.enum';
+import { ProjectMemberRole, ProjectTheme } from '../enum/project.enum';
 import { TaskStatus } from '../enum/task.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { ActivityService } from '../activity/activity.service';
@@ -39,6 +40,7 @@ import {
   ListProjectsQueryDto,
   UpdateProjectDto,
   UpdateProjectMemberRoleDto,
+  UpdateMyProjectThemeDto,
 } from './dto/project.dto';
 import {
   ListAssignableMembersQueryDto,
@@ -51,6 +53,7 @@ import {
   hasOrgWideProjectAccess,
   isOperationalProjectLeadRole,
 } from './project-access.util';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ProjectsService {
@@ -59,6 +62,8 @@ export class ProjectsService {
     private readonly projectRepository: Repository<Project>,
     @InjectRepository(ProjectMember)
     private readonly projectMemberRepository: Repository<ProjectMember>,
+    @InjectRepository(ProjectUserTheme)
+    private readonly projectUserThemeRepository: Repository<ProjectUserTheme>,
     @InjectRepository(Task)
     private readonly taskRepository: Repository<Task>,
     @InjectRepository(Organization)
@@ -67,6 +72,7 @@ export class ProjectsService {
     private readonly userRepository: Repository<User>,
     @Inject(forwardRef(() => ActivityService))
     private readonly activityService: ActivityService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async listProjects(user: JwtPayload, query: ListProjectsQueryDto = {}) {
@@ -80,6 +86,10 @@ export class ProjectsService {
     const statsByProjectId = await this.loadProjectTaskStats(
       projects.map((project) => project.id),
     );
+    const themesByProjectId = await this.loadUserThemesForProjects(
+      user.sub,
+      projects.map((project) => project.id),
+    );
 
     return buildPaginatedResponse(
       projects.map((project) =>
@@ -87,6 +97,7 @@ export class ProjectsService {
           project,
           this.resolveViewerRole(user, project.members ?? []),
           statsByProjectId.get(project.id),
+          themesByProjectId.get(project.id) ?? ProjectTheme.CLASSIC,
         ),
       ),
       total,
@@ -99,12 +110,41 @@ export class ProjectsService {
     const project = await this.getAccessibleProject(user, projectId);
     const membership = this.findMembership(project.members ?? [], user.sub);
     const statsByProjectId = await this.loadProjectTaskStats([project.id]);
+    const viewerTheme = await this.resolveViewerTheme(user.sub, project.id);
 
     return mapWorkspaceProjectResponse(
       project,
       this.resolveViewerRole(user, project.members ?? [], membership),
       statsByProjectId.get(project.id),
+      viewerTheme,
     );
+  }
+
+  async updateMyProjectTheme(
+    user: JwtPayload,
+    projectId: string,
+    dto: UpdateMyProjectThemeDto,
+  ) {
+    await this.getAccessibleProject(user, projectId);
+
+    const existing = await this.projectUserThemeRepository.findOne({
+      where: { userId: user.sub, projectId },
+    });
+
+    if (existing) {
+      existing.theme = dto.theme;
+      await this.projectUserThemeRepository.save(existing);
+    } else {
+      await this.projectUserThemeRepository.save(
+        this.projectUserThemeRepository.create({
+          userId: user.sub,
+          projectId,
+          theme: dto.theme,
+        }),
+      );
+    }
+
+    return this.getProject(user, projectId);
   }
 
   async createProject(user: JwtPayload, dto: CreateProjectDto) {
@@ -141,8 +181,23 @@ export class ProjectsService {
       }),
     );
 
-    await this.syncProjectMembers(project.id, memberIds, leadUserId, true);
+    const addedMemberIds = await this.syncProjectMembers(
+      project.id,
+      memberIds,
+      leadUserId,
+      true,
+    );
     await this.incrementOrganizationProjectCount(organizationId);
+
+    const actorName = await this.getUserDisplayName(user.sub);
+    void this.notificationsService.notifyProjectMembership({
+      organizationId,
+      projectId: project.id,
+      projectName: project.name,
+      actorUserId: user.sub,
+      actorName,
+      memberUserIds: addedMemberIds,
+    });
 
     await this.activityService.recordForUser(user, {
       module: ActivityModule.PROJECTS,
@@ -210,7 +265,22 @@ export class ProjectsService {
         dto.memberIds,
       );
 
-      await this.syncProjectMembers(project.id, memberIds, leadUserId, false);
+      const addedMemberIds = await this.syncProjectMembers(
+        project.id,
+        memberIds,
+        leadUserId,
+        false,
+      );
+
+      const actorName = await this.getUserDisplayName(user.sub);
+      void this.notificationsService.notifyProjectMembership({
+        organizationId: project.organizationId,
+        projectId: project.id,
+        projectName: project.name,
+        actorUserId: user.sub,
+        actorName,
+        memberUserIds: addedMemberIds,
+      });
     } else if (dto.leadUserId !== undefined && hasOrgWideProjectAccess(user.role)) {
       const leadUserId = project.leadUserId ?? user.sub;
       const currentMemberIds = (project.members ?? []).map((entry) => entry.userId);
@@ -508,6 +578,16 @@ export class ProjectsService {
         role: dto.role ?? ProjectMemberRole.MEMBER,
       }),
     );
+
+    const actorName = await this.getUserDisplayName(user.sub);
+    void this.notificationsService.notifyProjectMembership({
+      organizationId: project.organizationId,
+      projectId: project.id,
+      projectName: project.name,
+      actorUserId: user.sub,
+      actorName,
+      memberUserIds: [dto.userId],
+    });
 
     return this.listProjectMembers(user, projectId);
   }
@@ -854,7 +934,8 @@ export class ProjectsService {
     memberIds: string[],
     leadUserId: string,
     isCreate: boolean,
-  ) {
+  ): Promise<string[]> {
+    const addedUserIds: string[] = [];
     const existing = await this.projectMemberRepository.find({
       where: { projectId },
     });
@@ -890,6 +971,7 @@ export class ProjectsService {
               : ProjectMemberRole.MEMBER,
         }),
       );
+      addedUserIds.push(userId);
     }
 
     if (isCreate) {
@@ -902,6 +984,13 @@ export class ProjectsService {
         await this.projectMemberRepository.save(leadMembership);
       }
     }
+
+    return addedUserIds;
+  }
+
+  private async getUserDisplayName(userId: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    return user?.fullName ?? 'Someone';
   }
 
   private findMembership(memberships: ProjectMember[], userId: string) {
@@ -987,5 +1076,34 @@ export class ProjectsService {
     }
 
     return stats;
+  }
+
+  private async resolveViewerTheme(userId: string, projectId: string) {
+    const preference = await this.projectUserThemeRepository.findOne({
+      where: { userId, projectId },
+    });
+
+    return preference?.theme ?? ProjectTheme.CLASSIC;
+  }
+
+  private async loadUserThemesForProjects(userId: string, projectIds: string[]) {
+    const themes = new Map<string, ProjectTheme>();
+
+    if (projectIds.length === 0) {
+      return themes;
+    }
+
+    const preferences = await this.projectUserThemeRepository.find({
+      where: {
+        userId,
+        projectId: In(projectIds),
+      },
+    });
+
+    for (const preference of preferences) {
+      themes.set(preference.projectId, preference.theme);
+    }
+
+    return themes;
   }
 }

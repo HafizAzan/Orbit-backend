@@ -6,6 +6,7 @@ import {
   SignupSource,
 } from '../enum/auth.enum';
 import { MemberDepartment } from '../enum/member.enum';
+import { AppUiTheme } from '../enum/app-ui-theme.enum';
 
 import {
   Column,
@@ -102,6 +103,14 @@ export class User {
 
   @Column({ name: 'last_active_at', type: 'timestamptz', nullable: true })
   lastActiveAt: Date | null;
+
+  @Column({
+    name: 'ui_theme',
+    type: 'enum',
+    enum: AppUiTheme,
+    default: AppUiTheme.CLASSIC,
+  })
+  uiTheme: AppUiTheme;
 
   @ManyToOne(() => Organization, (organization) => organization.users, {
     nullable: true,
