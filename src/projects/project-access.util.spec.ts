@@ -2,7 +2,11 @@ import { RegisterAs } from '../enum/auth.enum';
 import { ProjectMemberRole } from '../enum/project.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import type { ProjectMember } from '../entities/project-member.entity';
-import { canDeleteProject } from './project-access.util';
+import {
+  canDeleteProject,
+  hasOrgWideProjectAccess,
+  isProjectScopedWorkspaceRole,
+} from './project-access.util';
 
 function actor(role: RegisterAs, sub = 'user-1'): JwtPayload {
   return {
@@ -16,6 +20,23 @@ function actor(role: RegisterAs, sub = 'user-1'): JwtPayload {
 function membership(role: ProjectMemberRole): ProjectMember {
   return { role } as ProjectMember;
 }
+
+describe('hasOrgWideProjectAccess', () => {
+  it('returns true for owner and admin only', () => {
+    expect(hasOrgWideProjectAccess(RegisterAs.OWNER)).toBe(true);
+    expect(hasOrgWideProjectAccess(RegisterAs.ADMIN)).toBe(true);
+    expect(hasOrgWideProjectAccess(RegisterAs.MANAGER)).toBe(false);
+    expect(hasOrgWideProjectAccess(RegisterAs.MEMBER)).toBe(false);
+  });
+});
+
+describe('isProjectScopedWorkspaceRole', () => {
+  it('includes manager and member', () => {
+    expect(isProjectScopedWorkspaceRole(RegisterAs.MANAGER)).toBe(true);
+    expect(isProjectScopedWorkspaceRole(RegisterAs.MEMBER)).toBe(true);
+    expect(isProjectScopedWorkspaceRole(RegisterAs.ADMIN)).toBe(false);
+  });
+});
 
 describe('canDeleteProject', () => {
   const createdById = 'creator-1';
