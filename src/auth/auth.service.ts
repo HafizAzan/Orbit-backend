@@ -551,24 +551,6 @@ export class AuthService {
     return this.toAuthUserResponse(user, user.organization);
   }
 
-  async recordHeartbeat(userId: string): Promise<{ lastActiveAt: string }> {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-
-    if (!user) {
-      throw new UnauthorizedException('User not found.');
-    }
-
-    if (user.accountStatus === AccountStatus.SUSPENDED) {
-      throw new UnauthorizedException('Your account has been suspended.');
-    }
-
-    const now = new Date();
-    user.lastActiveAt = now;
-    await this.userRepository.save(user);
-
-    return { lastActiveAt: now.toISOString() };
-  }
-
   async initiateEmailChange(user: JwtPayload, dto: InitiateEmailChangeDto) {
     if (!canChangeOwnEmail(user.role)) {
       throw new ForbiddenException(

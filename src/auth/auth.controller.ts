@@ -129,12 +129,6 @@ export class AuthController {
     return this.authService.updateUiTheme(user.sub, dto);
   }
 
-  @Post('heartbeat')
-  @UseGuards(JwtAuthGuard)
-  heartbeat(@CurrentUser() user: JwtPayload) {
-    return this.authService.recordHeartbeat(user.sub);
-  }
-
   @Post('me/email/initiate')
   @UseGuards(JwtAuthGuard)
   initiateEmailChange(

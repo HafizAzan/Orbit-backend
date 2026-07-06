@@ -28,6 +28,15 @@ import { TaskPriority, TaskStatus } from '../enum/task.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { ProjectsService } from '../projects/projects.service';
 import { ActivityService } from '../activity/activity.service';
+import {
+  DashboardPeriod,
+} from './dto/dashboard-query.dto';
+import {
+  getDashboardPeriodRange,
+  isProjectRelevantInPeriod,
+  isTaskRelevantInPeriod,
+  type DashboardDateRange,
+} from './dashboard-period.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import {
@@ -370,15 +379,26 @@ export class TasksService {
     };
   }
 
-  async getDashboard(user: JwtPayload) {
+  async getDashboard(
+    user: JwtPayload,
+    period: DashboardPeriod = DashboardPeriod.THIS_MONTH,
+  ) {
+    const range = getDashboardPeriodRange(period);
+
     const [projects, tasks, squadIds] = await Promise.all([
       this.findAccessibleProjects(user),
       this.findAccessibleTasks(user),
       this.projectsService.getSquadUserIds(user),
     ]);
 
-    const activeTasks = tasks.filter((task) => task.status !== TaskStatus.DONE);
-    const completedTasks = tasks.filter((task) => task.status === TaskStatus.DONE);
+    const periodTasks = tasks.filter((task) => isTaskRelevantInPeriod(task, range));
+    const periodProjectIds = new Set(periodTasks.map((task) => task.projectId));
+    const periodProjects = projects.filter((project) =>
+      isProjectRelevantInPeriod(project, range, periodProjectIds),
+    );
+
+    const activeTasks = periodTasks.filter((task) => task.status !== TaskStatus.DONE);
+    const completedTasks = periodTasks.filter((task) => task.status === TaskStatus.DONE);
 
     const isOwnerDashboard = user.role === RegisterAs.OWNER;
     const memberCount = isOwnerDashboard
@@ -389,8 +409,8 @@ export class TasksService {
       {
         id: 'total-projects',
         label: 'Total Projects',
-        value: String(projects.length),
-        trend: projects.length > 0 ? 'In your scope' : 'No projects yet',
+        value: String(periodProjects.length),
+        trend: periodProjects.length > 0 ? 'In this period' : 'No projects in period',
         trendType: 'stable' as const,
         icon: 'projects' as const,
         iconBg: 'bg-indigo-50',
@@ -399,7 +419,7 @@ export class TasksService {
         id: 'active-tasks',
         label: 'Active Tasks',
         value: String(activeTasks.length),
-        trend: `${tasks.length} total`,
+        trend: `${periodTasks.length} in period`,
         trendType: 'up' as const,
         icon: 'tasks' as const,
         iconBg: 'bg-sky-50',
@@ -417,23 +437,26 @@ export class TasksService {
         id: 'completed-tasks',
         label: 'Completed Tasks',
         value: String(completedTasks.length),
-        trend: tasks.length > 0 ? `${Math.round((completedTasks.length / tasks.length) * 100)}% done` : '0% done',
+        trend:
+          periodTasks.length > 0
+            ? `${Math.round((completedTasks.length / periodTasks.length) * 100)}% done`
+            : '0% done',
         trendType: 'up' as const,
         icon: 'completed' as const,
         iconBg: 'bg-emerald-50',
       },
     ];
 
-    const velocity = this.buildVelocitySeries(completedTasks);
-    const taskStatus = buildTaskStatusSlices(tasks);
-    const activeProjects = projects.slice(0, 5).map((project) => ({
+    const velocity = this.buildVelocitySeries(completedTasks, range, period);
+    const taskStatus = buildTaskStatusSlices(periodTasks);
+    const activeProjects = periodProjects.slice(0, 5).map((project) => ({
       id: project.id,
       name: project.name,
       updatedAt: project.updatedAt.toISOString(),
       progress: project.progress,
       iconBg: 'bg-indigo-50',
     }));
-    const criticalDeadlines = tasks
+    const criticalDeadlines = periodTasks
       .filter((task) => task.dueDate && task.status !== TaskStatus.DONE)
       .sort((left, right) => (left.dueDate ?? '').localeCompare(right.dueDate ?? ''))
       .slice(0, 5)
@@ -452,7 +475,7 @@ export class TasksService {
         };
       });
 
-    const activity = await this.activityService.getFeed(user, 5);
+    const activity = await this.activityService.getFeed(user, 5, range);
 
     return {
       metrics,
@@ -752,25 +775,76 @@ export class TasksService {
     });
   }
 
-  private buildVelocitySeries(completedTasks: Task[]) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  private buildVelocitySeries(
+    completedTasks: Task[],
+    range: DashboardDateRange,
+    period: DashboardPeriod,
+  ) {
+    const buckets = this.getVelocityBuckets(range, period);
 
-    return Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(today);
-      date.setDate(date.getDate() - (6 - index));
-      const key = date.toISOString().slice(0, 10);
-
+    return buckets.map((bucket) => {
       const completed = completedTasks.filter((task) => {
-        const updated = task.updatedAt.toISOString().slice(0, 10);
-        return updated === key;
+        const updated = task.updatedAt;
+        return updated >= bucket.from && updated <= bucket.to;
       }).length;
 
       return {
-        date: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        date: bucket.label,
         completed,
       };
     });
+  }
+
+  private getVelocityBuckets(range: DashboardDateRange, period: DashboardPeriod) {
+    if (period === DashboardPeriod.TODAY) {
+      return [{ from: range.from, to: range.to, label: 'Today' }];
+    }
+
+    if (period === DashboardPeriod.LAST_6_MONTHS || period === DashboardPeriod.THIS_YEAR) {
+      const buckets: { from: Date; to: Date; label: string }[] = [];
+      const cursor = new Date(range.from);
+      cursor.setDate(1);
+      cursor.setHours(0, 0, 0, 0);
+
+      while (cursor <= range.to) {
+        const bucketStart = new Date(cursor);
+        const bucketEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59, 999);
+        const cappedEnd = bucketEnd > range.to ? range.to : bucketEnd;
+
+        buckets.push({
+          from: bucketStart,
+          to: cappedEnd,
+          label: bucketStart.toLocaleDateString('en-US', { month: 'short' }),
+        });
+
+        cursor.setMonth(cursor.getMonth() + 1, 1);
+      }
+
+      return buckets;
+    }
+
+    const buckets: { from: Date; to: Date; label: string }[] = [];
+    const cursor = new Date(range.from);
+    cursor.setHours(0, 0, 0, 0);
+
+    while (cursor <= range.to) {
+      const bucketStart = new Date(cursor);
+      const bucketEnd = new Date(cursor);
+      bucketEnd.setHours(23, 59, 59, 999);
+
+      buckets.push({
+        from: bucketStart,
+        to: bucketEnd,
+        label:
+          period === DashboardPeriod.THIS_MONTH
+            ? String(bucketStart.getDate())
+            : bucketStart.toLocaleDateString('en-US', { weekday: 'short' }),
+      });
+
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return buckets;
   }
 
   private async removeAttachmentFile(attachment: TaskAttachment) {

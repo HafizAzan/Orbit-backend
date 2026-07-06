@@ -211,6 +211,11 @@ export class TeamService {
         isActiveOnDate(member.lastActiveAt, weekAgo),
     ).length;
 
+    const memberIds = new Set(members.map((member) => member.id));
+    const onlineUserIds =
+      this.presenceService.getOrgPresence(user.organizationId!).onlineUserIds;
+    const onlineNow = onlineUserIds.filter((userId) => memberIds.has(userId)).length;
+
     return {
       totalSeats: {
         used: occupiedSeats,
@@ -219,6 +224,8 @@ export class TeamService {
       pendingInvites,
       activeToday,
       activeTodayTrend: buildActiveTodayTrend(activeToday, activeWeekAgo),
+      onlineNow,
+      squadSize: occupiedSeats,
     };
   }
 

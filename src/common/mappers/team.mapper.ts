@@ -43,6 +43,8 @@ export type TeamStatsResponse = {
   pendingInvites: number;
   activeToday: number;
   activeTodayTrend: string;
+  onlineNow: number;
+  squadSize: number;
 };
 
 const AVATAR_COLORS = [

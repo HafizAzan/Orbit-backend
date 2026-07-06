@@ -12,6 +12,7 @@ export type CalendarEventResponse = {
   projectId?: string;
   description?: string;
   source: 'event' | 'task' | 'project';
+  createdById?: string;
 };
 
 export function mapCalendarEventRecord(
@@ -25,6 +26,7 @@ export function mapCalendarEventRecord(
     projectId: event.projectId ?? undefined,
     description: event.description || undefined,
     source: 'event',
+    createdById: event.createdById,
   };
 }
 

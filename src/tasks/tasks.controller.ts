@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { CreateTaskDto, UpdateTaskDto } from './dto/task.dto';
+import { DashboardQueryDto, DashboardPeriod } from './dto/dashboard-query.dto';
 import { ListTasksQueryDto } from './dto/task-list-query.dto';
 import { taskAttachmentUploadOptions } from './task-attachment.storage';
 import { TasksService } from './tasks.service';
@@ -27,8 +28,14 @@ export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
   @Get('dashboard')
-  getDashboard(@CurrentUser() user: JwtPayload) {
-    return this.tasksService.getDashboard(user);
+  getDashboard(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: DashboardQueryDto,
+  ) {
+    return this.tasksService.getDashboard(
+      user,
+      query.period ?? DashboardPeriod.THIS_MONTH,
+    );
   }
 
   @Get('reports')

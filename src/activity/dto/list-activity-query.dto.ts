@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { ActivityModule } from '../../enum/activity.enum';
 
 export class ListActivityQueryDto {
@@ -19,4 +19,12 @@ export class ListActivityQueryDto {
   @IsOptional()
   @IsEnum(ActivityModule)
   module?: ActivityModule;
+
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @IsOptional()
+  @IsDateString()
+  to?: string;
 }
