@@ -91,8 +91,19 @@ export class ActivityService {
     });
   }
 
-  async getFeed(user: JwtPayload, limit = 5): Promise<ActivityFeedItemResponse[]> {
-    const events = await this.fetchVisibleEvents(user, { page: 1, limit });
+  async getFeed(
+    user: JwtPayload,
+    limit = 5,
+    range?: { from: Date; to: Date },
+  ): Promise<ActivityFeedItemResponse[]> {
+    const query: ListActivityQueryDto = { page: 1, limit };
+
+    if (range) {
+      query.from = range.from.toISOString().slice(0, 10);
+      query.to = range.to.toISOString().slice(0, 10);
+    }
+
+    const events = await this.fetchVisibleEvents(user, query);
 
     return events.map((event) =>
       mapActivityFeedItem(event, canDeleteActivity(user, event)),
@@ -158,6 +169,14 @@ export class ActivityService {
 
     if (query.module) {
       qb.andWhere('activity.module = :module', { module: query.module });
+    }
+
+    if (query.from) {
+      qb.andWhere('DATE(activity.created_at) >= :from', { from: query.from });
+    }
+
+    if (query.to) {
+      qb.andWhere('DATE(activity.created_at) <= :to', { to: query.to });
     }
 
     await this.applyVisibilityScope(user, qb);

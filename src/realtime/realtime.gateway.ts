@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
 import {
   ConnectedSocket,
   MessageBody,
@@ -9,8 +10,12 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
+
+const PRESENCE_PING_THROTTLE_MS = 2 * 60 * 1000;
 import type { Server, Socket } from 'socket.io';
+import { Repository } from 'typeorm';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
+import { User } from '../entities/user.entity';
 import { PresenceService } from './presence.service';
 
 type AuthenticatedSocket = Socket & {
@@ -29,6 +34,7 @@ export class RealtimeGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
   private readonly logger = new Logger(RealtimeGateway.name);
+  private readonly lastActiveTouch = new Map<string, number>();
 
   @WebSocketServer()
   server: Server;
@@ -36,6 +42,8 @@ export class RealtimeGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly presenceService: PresenceService,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket) {
@@ -56,7 +64,19 @@ export class RealtimeGateway
 
       if (payload.organizationId) {
         await client.join(this.orgRoom(payload.organizationId));
+
+        const wasOnline = this.presenceService.isUserOnline(
+          payload.organizationId,
+          payload.sub,
+        );
         this.presenceService.userConnected(payload.organizationId, payload.sub);
+
+        if (!wasOnline) {
+          void this.userRepository.update(payload.sub, {
+            lastActiveAt: new Date(),
+          });
+        }
+
         this.broadcastOrgPresence(payload.organizationId);
       }
     } catch {
@@ -73,6 +93,27 @@ export class RealtimeGateway
     }
 
     this.logger.debug(`Socket disconnected: ${client.id}`);
+  }
+
+  @SubscribeMessage('presence:ping')
+  async handlePresencePing(@ConnectedSocket() client: AuthenticatedSocket) {
+    const user = client.user;
+    if (!user?.organizationId) return { ok: false };
+
+    const now = Date.now();
+    const lastTouch = this.lastActiveTouch.get(user.sub) ?? 0;
+
+    if (now - lastTouch < PRESENCE_PING_THROTTLE_MS) {
+      return { ok: true };
+    }
+
+    this.lastActiveTouch.set(user.sub, now);
+
+    void this.userRepository.update(user.sub, {
+      lastActiveAt: new Date(),
+    });
+
+    return { ok: true };
   }
 
   @SubscribeMessage('project:join')
