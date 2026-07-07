@@ -41,8 +41,10 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import {
   canDeleteAnyTask,
+  canMemberUpdateTaskStatus,
   canModifyTask,
   canViewAllOrganizationTasks,
+  getMemberTaskUpdateViolation,
 } from './task-access.util';
 import { CreateTaskDto, UpdateTaskDto } from './dto/task.dto';
 import { ListTasksQueryDto } from './dto/task-list-query.dto';
@@ -132,6 +134,10 @@ export class TasksService {
       );
     }
 
+    if (user.role === RegisterAs.MEMBER) {
+      throw new ForbiddenException('Members cannot create tasks.');
+    }
+
     const project = await this.projectsService.ensureAccessibleProject(
       user,
       dto.projectId,
@@ -192,7 +198,18 @@ export class TasksService {
   async updateTask(user: JwtPayload, taskId: string, dto: UpdateTaskDto) {
     const task = await this.getAccessibleTask(user, taskId, true);
 
-    if (!canModifyTask(user, task)) {
+    if (user.role === RegisterAs.MEMBER) {
+      const violation = getMemberTaskUpdateViolation(dto);
+      if (violation) {
+        throw new ForbiddenException(violation);
+      }
+
+      if (!canMemberUpdateTaskStatus(user, task)) {
+        throw new ForbiddenException(
+          'You can only update status on tasks assigned to you.',
+        );
+      }
+    } else if (!canModifyTask(user, task)) {
       throw new ForbiddenException('You do not have permission to edit this task.');
     }
 
@@ -296,6 +313,10 @@ export class TasksService {
 
     const task = await this.getAccessibleTask(user, taskId, true);
 
+    if (user.role === RegisterAs.MEMBER) {
+      throw new ForbiddenException('Members cannot modify task attachments.');
+    }
+
     if (!canModifyTask(user, task)) {
       throw new ForbiddenException('You do not have permission to edit this task.');
     }
@@ -322,6 +343,10 @@ export class TasksService {
   ) {
     const task = await this.getAccessibleTask(user, taskId, true);
 
+    if (user.role === RegisterAs.MEMBER) {
+      throw new ForbiddenException('Members cannot modify task attachments.');
+    }
+
     if (!canModifyTask(user, task)) {
       throw new ForbiddenException('You do not have permission to edit this task.');
     }
@@ -346,6 +371,10 @@ export class TasksService {
 
   async deleteTask(user: JwtPayload, taskId: string) {
     const task = await this.getAccessibleTask(user, taskId, true);
+
+    if (user.role === RegisterAs.MEMBER) {
+      throw new ForbiddenException('Members cannot delete tasks.');
+    }
 
     if (!canDeleteAnyTask(user) && !canModifyTask(user, task)) {
       throw new ForbiddenException('You do not have permission to delete this task.');

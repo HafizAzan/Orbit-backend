@@ -16,6 +16,7 @@ import { CalendarEvent } from '../entities/calendar-event.entity';
 import { Project } from '../entities/project.entity';
 import { Task } from '../entities/task.entity';
 import { TaskStatus } from '../enum/task.enum';
+import { RegisterAs } from '../enum/auth.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { hasOrgWideProjectAccess } from '../projects/project-access.util';
 import { ProjectsService } from '../projects/projects.service';
@@ -83,6 +84,8 @@ export class CalendarService {
   }
 
   async createEvent(user: JwtPayload, dto: CreateCalendarEventDto) {
+    this.ensureCanManageCustomCalendarEvents(user);
+
     if (dto.projectId) {
       await this.projectsService.ensureAccessibleProject(
         user,
@@ -111,6 +114,7 @@ export class CalendarService {
     eventId: string,
     dto: UpdateCalendarEventDto,
   ) {
+    this.ensureCanManageCustomCalendarEvents(user);
     const event = await this.getOwnedEvent(user, eventId);
 
     if (dto.title !== undefined) {
@@ -147,6 +151,7 @@ export class CalendarService {
   }
 
   async deleteEvent(user: JwtPayload, eventId: string) {
+    this.ensureCanManageCustomCalendarEvents(user);
     const event = await this.getOwnedEvent(user, eventId);
     await this.calendarEventRepository.delete(event.id);
 
@@ -207,6 +212,14 @@ export class CalendarService {
     }));
 
     return paginateArray(summaries, query);
+  }
+
+  private ensureCanManageCustomCalendarEvents(user: JwtPayload) {
+    if (user.role === RegisterAs.MEMBER) {
+      throw new ForbiddenException(
+        'Members have read-only calendar access. Update tasks from My Tasks instead.',
+      );
+    }
   }
 
   private async getOwnedEvent(user: JwtPayload, eventId: string) {
