@@ -23,7 +23,14 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Organization, PendingRegistration, PasswordReset, Subscription, PendingEmailChange]),
+    TypeOrmModule.forFeature([
+      User,
+      Organization,
+      PendingRegistration,
+      PasswordReset,
+      Subscription,
+      PendingEmailChange,
+    ]),
     EmailModule,
     forwardRef(() => OrganizationsModule),
     forwardRef(() => NotificationsModule),
@@ -40,7 +47,10 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
         return {
           secret,
           signOptions: {
-            expiresIn: configService.get<string>('JWT_EXPIRES_IN', '7d') as never,
+            expiresIn: configService.get<string>(
+              'JWT_EXPIRES_IN',
+              '7d',
+            ) as never,
           },
         };
       },

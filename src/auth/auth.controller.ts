@@ -28,6 +28,7 @@ import { RequestEmailChangeDto } from './dto/email-change-request.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUiThemeDto } from './dto/update-ui-theme.dto';
+import { DisableTwoFactorDto, EnableTwoFactorDto, VerifyTwoFactorDto } from './dto/two-factor.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -63,6 +64,41 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('2fa/verify')
+  verifyTwoFactor(@Body() dto: VerifyTwoFactorDto) {
+    return this.authService.verifyTwoFactorChallenge(dto);
+  }
+
+  @Get('2fa/status')
+  @UseGuards(JwtAuthGuard)
+  getTwoFactorStatus(@CurrentUser() user: JwtPayload) {
+    return this.authService.getTwoFactorStatus(user.sub);
+  }
+
+  @Post('2fa/setup')
+  @UseGuards(JwtAuthGuard)
+  setupTwoFactor(@CurrentUser() user: JwtPayload) {
+    return this.authService.setupTwoFactor(user.sub);
+  }
+
+  @Post('2fa/enable')
+  @UseGuards(JwtAuthGuard)
+  enableTwoFactor(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: EnableTwoFactorDto,
+  ) {
+    return this.authService.enableTwoFactor(user.sub, dto);
+  }
+
+  @Post('2fa/disable')
+  @UseGuards(JwtAuthGuard)
+  disableTwoFactor(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: DisableTwoFactorDto,
+  ) {
+    return this.authService.disableTwoFactor(user.sub, dto);
   }
 
   @Post('logout')

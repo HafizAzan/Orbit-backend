@@ -379,6 +379,37 @@ export class BillingService {
     };
   }
 
+  async createCustomerPortalSession(
+    user: JwtPayload,
+    returnUrl?: string,
+  ) {
+    const { subscription } = await this.resolveOrganizationBillingContext(user);
+
+    if (!subscription.stripeCustomerId) {
+      throw new BadRequestException(
+        'No Stripe customer found. Start a subscription before managing payment methods.',
+      );
+    }
+
+    const frontendUrl = this.configService.get<string>(
+      'FRONTEND_URL',
+      'http://localhost:5173',
+    );
+    const session = await this.stripeService.client.billingPortal.sessions.create({
+      customer: subscription.stripeCustomerId,
+      return_url: returnUrl ?? `${frontendUrl}/billing`,
+    });
+
+    if (!session.url) {
+      throw new BadRequestException('Unable to open billing portal.');
+    }
+
+    return {
+      message: 'Billing portal session created successfully.',
+      url: session.url,
+    };
+  }
+
   async listInvoices(
     user: JwtPayload,
     query: ListInvoicesQueryDto = {},

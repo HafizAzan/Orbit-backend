@@ -10,6 +10,10 @@ import { buildRegisterOtpEmailHtml } from './templates/register-otp.template';
 import { buildPasswordResetEmailHtml } from './templates/password-reset.template';
 import { buildTeamInviteEmailHtml } from './templates/team-invite.template';
 import { buildEmailChangeRequestEmailHtml } from './templates/email-change-request.template';
+import {
+  buildDailyDigestEmailHtml,
+  buildWeeklyReportEmailHtml,
+} from './templates/workspace-digest.template';
 
 const OTP_TTL_MINUTES = 10;
 const PASSWORD_RESET_TTL_MINUTES = 60;
@@ -159,6 +163,40 @@ export class EmailService {
         settingsUrl: params.settingsUrl,
       }),
       failureMessage: 'Unable to send email change request. Please try again.',
+    });
+  }
+
+  async sendDailyDigestEmail(params: {
+    to: string;
+    fullName: string;
+    workspaceName: string;
+    tasksDueToday: number;
+    openTasks: number;
+    recentActivity: number;
+    dashboardUrl: string;
+  }): Promise<void> {
+    await this.sendEmail({
+      to: params.to.trim().toLowerCase(),
+      subject: `${params.workspaceName} daily digest`,
+      html: buildDailyDigestEmailHtml(params),
+      failureMessage: 'Unable to send daily digest email.',
+    });
+  }
+
+  async sendWeeklyReportEmail(params: {
+    to: string;
+    fullName: string;
+    workspaceName: string;
+    completedTasks: number;
+    createdTasks: number;
+    activeMembers: number;
+    reportsUrl: string;
+  }): Promise<void> {
+    await this.sendEmail({
+      to: params.to.trim().toLowerCase(),
+      subject: `${params.workspaceName} weekly report`,
+      html: buildWeeklyReportEmailHtml(params),
+      failureMessage: 'Unable to send weekly report email.',
     });
   }
 

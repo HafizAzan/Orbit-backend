@@ -64,6 +64,7 @@ import { ProjectsService } from '../projects/projects.service';
 import { ActivityService } from '../activity/activity.service';
 import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import { hasOrgWideProjectAccess } from '../projects/project-access.util';
+import { mergeOrganizationWorkspaceSettings } from '../common/types/organization-workspace-settings.type';
 
 const ASSIGNABLE_MEMBER_ROLES: RegisterAs[] = [
   RegisterAs.ADMIN,
@@ -276,6 +277,41 @@ export class OrganizationsService {
 
     if (dto.billingEmail !== undefined) {
       organization.billingEmail = dto.billingEmail.trim().toLowerCase();
+    }
+
+    if (dto.workspaceSettings) {
+      const wasTwoFactorRequired =
+        organization.workspaceSettings?.twoFactorRequired ?? false;
+
+      organization.workspaceSettings = mergeOrganizationWorkspaceSettings(
+        organization.workspaceSettings,
+        dto.workspaceSettings,
+      );
+
+      if (
+        !wasTwoFactorRequired &&
+        organization.workspaceSettings.twoFactorRequired
+      ) {
+        const actor = await this.userRepository.findOne({
+          where: { id: user.sub },
+        });
+
+        if (!actor?.twoFactorEnabled) {
+          throw new BadRequestException(
+            'Enable two-factor authentication on your account in Settings → Security before requiring it for the workspace.',
+          );
+        }
+      }
+
+      if (
+        wasTwoFactorRequired &&
+        organization.workspaceSettings.twoFactorRequired === false
+      ) {
+        await this.userRepository.update(
+          { organizationId: organization.id },
+          { twoFactorEnabled: false, twoFactorSecret: null },
+        );
+      }
     }
 
     await this.organizationRepository.save(organization);

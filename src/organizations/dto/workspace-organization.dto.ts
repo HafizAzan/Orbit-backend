@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -8,6 +9,32 @@ import {
   MinLength,
 } from 'class-validator';
 import { RegisterAs } from '../../enum/auth.enum';
+
+export class UpdateOrganizationWorkspaceSettingsDto {
+  @IsOptional()
+  @IsBoolean()
+  dailyDigest?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  realtimePush?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  weeklyReport?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  twoFactorRequired?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  sessionTimeoutEnabled?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  sessionTimeoutMinutes?: number;
+}
 
 export class UpdateWorkspaceOrganizationDto {
   @IsOptional()
@@ -26,6 +53,10 @@ export class UpdateWorkspaceOrganizationDto {
   @IsString()
   @MaxLength(255)
   billingEmail?: string;
+
+  @IsOptional()
+  @Type(() => UpdateOrganizationWorkspaceSettingsDto)
+  workspaceSettings?: UpdateOrganizationWorkspaceSettingsDto;
 }
 
 export class UpdateOrganizationMemberRoleDto {

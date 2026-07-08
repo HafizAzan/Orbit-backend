@@ -21,6 +21,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { ActivityModule } from './activity/activity.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { JobsModule } from './jobs/jobs.module';
 
 // module decorator
 @Module({
@@ -58,6 +59,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     CalendarModule,
     ActivityModule,
     NotificationsModule,
+    JobsModule,
   ],
   controllers: [AppController],
   providers: [

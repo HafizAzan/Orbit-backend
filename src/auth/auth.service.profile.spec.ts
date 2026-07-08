@@ -3,10 +3,16 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import { AuthService } from './auth.service';
-import { User } from '../entities/user.entity';
 
 jest.mock('argon2');
+jest.mock('./two-factor.util', () => ({
+  generateTwoFactorSecret: jest.fn(() => 'TEST_SECRET'),
+  buildTwoFactorOtpAuthUrl: jest.fn(() => 'otpauth://test'),
+  verifyTwoFactorCode: jest.fn(async () => true),
+}));
+
+import { AuthService } from './auth.service';
+import { User } from '../entities/user.entity';
 
 describe('AuthService changePassword', () => {
   const userRepository = {

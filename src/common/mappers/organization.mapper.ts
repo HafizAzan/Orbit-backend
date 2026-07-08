@@ -6,6 +6,10 @@ import {
   RegisterAs,
 } from '../../enum/auth.enum';
 import { mapOrganizationResponse, type OrganizationResponse } from './billing.mapper';
+import {
+  DEFAULT_ORGANIZATION_WORKSPACE_SETTINGS,
+  type OrganizationWorkspaceSettings,
+} from '../../common/types/organization-workspace-settings.type';
 
 export type OrganizationMemberResponse = {
   id: string;
@@ -20,6 +24,7 @@ export type OrganizationMemberResponse = {
 export type WorkspaceOrganizationResponse = OrganizationResponse & {
   billingEmail: string | null;
   slug: string;
+  workspaceSettings: OrganizationWorkspaceSettings;
 };
 
 import type {
@@ -103,6 +108,8 @@ export function mapWorkspaceOrganizationResponse(
     ...base,
     slug: organization.slug,
     billingEmail: organization.billingEmail,
+    workspaceSettings:
+      organization.workspaceSettings ?? DEFAULT_ORGANIZATION_WORKSPACE_SETTINGS,
   };
 }
 

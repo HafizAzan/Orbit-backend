@@ -32,3 +32,9 @@ export class ConfirmCheckoutDto {
   @MinLength(3)
   sessionId: string;
 }
+
+export class CreatePortalSessionDto {
+  @IsOptional()
+  @IsString()
+  returnUrl?: string;
+}

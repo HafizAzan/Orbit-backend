@@ -1,4 +1,5 @@
 import { OrganizationStatus } from '../enum/billing.enum';
+import type { OrganizationWorkspaceSettings } from '../common/types/organization-workspace-settings.type';
 import {
   Column,
   CreateDateColumn,
@@ -31,6 +32,9 @@ export class Organization {
 
   @Column({ name: 'billing_email', type: 'varchar', length: 255, nullable: true })
   billingEmail: string | null;
+
+  @Column({ name: 'workspace_settings', type: 'jsonb', nullable: true })
+  workspaceSettings: OrganizationWorkspaceSettings | null;
 
   @Column({ name: 'project_count', type: 'integer', default: 0 })
   projectCount: number;

@@ -188,14 +188,7 @@ export class ActivityService {
     user: JwtPayload,
     qb: ReturnType<Repository<ActivityEvent>['createQueryBuilder']>,
   ) {
-    if (user.role === RegisterAs.OWNER) {
-      return;
-    }
-
-    if (user.role === RegisterAs.ADMIN) {
-      qb.andWhere('activity.actor_role IN (:...roles)', {
-        roles: [RegisterAs.ADMIN, RegisterAs.MANAGER, RegisterAs.MEMBER],
-      });
+    if (user.role === RegisterAs.OWNER || user.role === RegisterAs.ADMIN) {
       return;
     }
 

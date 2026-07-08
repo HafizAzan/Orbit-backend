@@ -104,6 +104,12 @@ export class User {
   @Column({ name: 'last_active_at', type: 'timestamptz', nullable: true })
   lastActiveAt: Date | null;
 
+  @Column({ name: 'two_factor_enabled', default: false })
+  twoFactorEnabled: boolean;
+
+  @Column({ name: 'two_factor_secret', type: 'varchar', length: 255, nullable: true })
+  twoFactorSecret: string | null;
+
   @Column({
     name: 'ui_theme',
     type: 'enum',

@@ -22,6 +22,7 @@ import {
   ChangePlanDto,
   ConfirmCheckoutDto,
   CreateCheckoutDto,
+  CreatePortalSessionDto,
   ListInvoicesQueryDto,
   RefundPaymentDto,
 } from './dto/billing.dto';
@@ -76,6 +77,15 @@ export class BillingController {
   @UseGuards(JwtAuthGuard, OrganizationBillingGuard)
   refundPayment(@CurrentUser() user: JwtPayload, @Body() dto: RefundPaymentDto) {
     return this.billingService.refundPayment(user, dto);
+  }
+
+  @Post('portal')
+  @UseGuards(JwtAuthGuard, OrganizationBillingGuard)
+  createPortalSession(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreatePortalSessionDto,
+  ) {
+    return this.billingService.createCustomerPortalSession(user, dto.returnUrl);
   }
 
   @Get('invoices')

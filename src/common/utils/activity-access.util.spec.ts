@@ -25,7 +25,10 @@ describe('canDeleteActivity', () => {
     expect(canDeleteActivity(actor(RegisterAs.OWNER), event())).toBe(true);
   });
 
-  it('allows admin to delete manager and member activity', () => {
+  it('allows admin to delete admin, manager, and member activity', () => {
+    expect(
+      canDeleteActivity(actor(RegisterAs.ADMIN), event({ actorRole: RegisterAs.ADMIN })),
+    ).toBe(true);
     expect(
       canDeleteActivity(actor(RegisterAs.ADMIN), event({ actorRole: RegisterAs.MANAGER })),
     ).toBe(true);
