@@ -51,12 +51,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         organization?.workspaceSettings ??
         DEFAULT_ORGANIZATION_WORKSPACE_SETTINGS;
 
-      if (settings.twoFactorRequired && !user.twoFactorEnabled) {
-        throw new UnauthorizedException(
-          'Two-factor authentication is required for this workspace. Contact your workspace owner or admin.',
-        );
-      }
-
       if (settings.sessionTimeoutEnabled && user.lastActiveAt) {
         const idleMs = Date.now() - user.lastActiveAt.getTime();
         const timeoutMs = settings.sessionTimeoutMinutes * 60 * 1000;

@@ -36,6 +36,12 @@ export class Organization {
   @Column({ name: 'workspace_settings', type: 'jsonb', nullable: true })
   workspaceSettings: OrganizationWorkspaceSettings | null;
 
+  @Column({ name: 'two_factor_secret', type: 'varchar', length: 255, nullable: true })
+  twoFactorSecret: string | null;
+
+  @Column({ name: 'two_factor_configured', default: false })
+  twoFactorConfigured: boolean;
+
   @Column({ name: 'project_count', type: 'integer', default: 0 })
   projectCount: number;
 

@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -19,6 +20,7 @@ import {
   UpdateOrganizationMemberRoleDto,
   UpdateWorkspaceOrganizationDto,
 } from './dto/workspace-organization.dto';
+import { ConfirmOrganizationTwoFactorDto } from './dto/organization-two-factor.dto';
 import { OrganizationsService } from './organizations.service';
 
 @Controller('organizations')
@@ -43,6 +45,30 @@ export class WorkspaceOrganizationsController {
     @Body() dto: UpdateWorkspaceOrganizationDto,
   ) {
     return this.organizationsService.updateCurrentOrganization(user, dto);
+  }
+
+  @Get('me/2fa/status')
+  @UseGuards(OrganizationAdminGuard)
+  getTwoFactorStatus(@CurrentUser() user: JwtPayload) {
+    return this.organizationsService.getOrganizationTwoFactorStatus(user);
+  }
+
+  @Post('me/2fa/setup')
+  @UseGuards(OrganizationAdminGuard)
+  setupTwoFactor(@CurrentUser() user: JwtPayload) {
+    return this.organizationsService.setupOrganizationTwoFactor(user);
+  }
+
+  @Post('me/2fa/confirm')
+  @UseGuards(OrganizationAdminGuard)
+  confirmTwoFactor(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ConfirmOrganizationTwoFactorDto,
+  ) {
+    return this.organizationsService.confirmOrganizationTwoFactor(
+      user,
+      dto.code,
+    );
   }
 
   @Get('me/members')

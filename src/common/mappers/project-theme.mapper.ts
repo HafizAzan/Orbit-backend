@@ -1,4 +1,5 @@
 import { ProjectTheme } from '../../enum/project.enum';
+import { normalizeProjectTheme } from '../theme-normalize.util';
 
 export type ProjectThemeMeta = {
   id: ProjectTheme;
@@ -14,6 +15,7 @@ export type ProjectThemeMeta = {
   iconBg: string;
   iconColor: string;
   previewGradient: string;
+  mode: 'light' | 'dark';
 };
 
 export const PROJECT_THEME_META: Record<ProjectTheme, ProjectThemeMeta> = {
@@ -31,70 +33,43 @@ export const PROJECT_THEME_META: Record<ProjectTheme, ProjectThemeMeta> = {
     iconBg: 'bg-indigo-50',
     iconColor: 'text-indigo-600',
     previewGradient: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+    mode: 'light',
   },
-  [ProjectTheme.OCEAN]: {
-    id: ProjectTheme.OCEAN,
-    label: 'Ocean',
-    description: 'Deep teal and aqua tones inspired by open water.',
-    accent: '#0891b2',
-    accentSoft: 'bg-cyan-50',
-    accentText: 'text-cyan-600',
-    headerFrom: 'from-cyan-500',
-    headerTo: 'to-blue-600',
-    cardBorder: 'border-cyan-100',
-    pillBg: 'bg-cyan-50 text-cyan-700',
-    iconBg: 'bg-cyan-50',
-    iconColor: 'text-cyan-600',
-    previewGradient: 'linear-gradient(135deg, #06b6d4 0%, #2563eb 100%)',
+  [ProjectTheme.TEAL]: {
+    id: ProjectTheme.TEAL,
+    label: 'Teal',
+    description: 'Calm teal accents for focused delivery work.',
+    accent: '#0d9488',
+    accentSoft: 'bg-teal-50',
+    accentText: 'text-teal-600',
+    headerFrom: 'from-teal-500',
+    headerTo: 'to-cyan-600',
+    cardBorder: 'border-teal-100',
+    pillBg: 'bg-teal-50 text-teal-700',
+    iconBg: 'bg-teal-50',
+    iconColor: 'text-teal-600',
+    previewGradient: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
+    mode: 'light',
   },
-  [ProjectTheme.SUNSET]: {
-    id: ProjectTheme.SUNSET,
-    label: 'Sunset',
-    description: 'Warm coral and amber glow for energetic teams.',
-    accent: '#ea580c',
-    accentSoft: 'bg-orange-50',
-    accentText: 'text-orange-600',
-    headerFrom: 'from-orange-400',
-    headerTo: 'to-rose-500',
-    cardBorder: 'border-orange-100',
-    pillBg: 'bg-orange-50 text-orange-700',
-    iconBg: 'bg-orange-50',
-    iconColor: 'text-orange-600',
-    previewGradient: 'linear-gradient(135deg, #fb923c 0%, #f43f5e 100%)',
+  [ProjectTheme.AMBER]: {
+    id: ProjectTheme.AMBER,
+    label: 'Amber',
+    description: 'Warm amber glow for energetic teams.',
+    accent: '#d97706',
+    accentSoft: 'bg-amber-50',
+    accentText: 'text-amber-600',
+    headerFrom: 'from-amber-400',
+    headerTo: 'to-orange-500',
+    cardBorder: 'border-amber-100',
+    pillBg: 'bg-amber-50 text-amber-700',
+    iconBg: 'bg-amber-50',
+    iconColor: 'text-amber-600',
+    previewGradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+    mode: 'light',
   },
-  [ProjectTheme.FOREST]: {
-    id: ProjectTheme.FOREST,
-    label: 'Forest',
-    description: 'Fresh emerald greens for calm, focused delivery.',
-    accent: '#059669',
-    accentSoft: 'bg-emerald-50',
-    accentText: 'text-emerald-600',
-    headerFrom: 'from-emerald-500',
-    headerTo: 'to-teal-600',
-    cardBorder: 'border-emerald-100',
-    pillBg: 'bg-emerald-50 text-emerald-700',
-    iconBg: 'bg-emerald-50',
-    iconColor: 'text-emerald-600',
-    previewGradient: 'linear-gradient(135deg, #10b981 0%, #0d9488 100%)',
-  },
-  [ProjectTheme.ROYAL]: {
-    id: ProjectTheme.ROYAL,
-    label: 'Royal',
-    description: 'Rich violet and fuchsia for premium project spaces.',
-    accent: '#9333ea',
-    accentSoft: 'bg-fuchsia-50',
-    accentText: 'text-fuchsia-600',
-    headerFrom: 'from-fuchsia-500',
-    headerTo: 'to-purple-600',
-    cardBorder: 'border-fuchsia-100',
-    pillBg: 'bg-fuchsia-50 text-fuchsia-700',
-    iconBg: 'bg-fuchsia-50',
-    iconColor: 'text-fuchsia-600',
-    previewGradient: 'linear-gradient(135deg, #d946ef 0%, #9333ea 100%)',
-  },
-  [ProjectTheme.MIDNIGHT]: {
-    id: ProjectTheme.MIDNIGHT,
-    label: 'Midnight',
+  [ProjectTheme.DARK]: {
+    id: ProjectTheme.DARK,
+    label: 'Dark',
     description: 'Slate and indigo night sky for sleek dashboards.',
     accent: '#4338ca',
     accentSoft: 'bg-slate-100',
@@ -106,11 +81,44 @@ export const PROJECT_THEME_META: Record<ProjectTheme, ProjectThemeMeta> = {
     iconBg: 'bg-slate-100',
     iconColor: 'text-indigo-700',
     previewGradient: 'linear-gradient(135deg, #475569 0%, #3730a3 100%)',
+    mode: 'dark',
+  },
+  [ProjectTheme.ONYX]: {
+    id: ProjectTheme.ONYX,
+    label: 'Onyx',
+    description: 'Charcoal tones with a cool cyan edge.',
+    accent: '#06b6d4',
+    accentSoft: 'bg-zinc-100',
+    accentText: 'text-cyan-700',
+    headerFrom: 'from-zinc-700',
+    headerTo: 'to-zinc-900',
+    cardBorder: 'border-zinc-200',
+    pillBg: 'bg-zinc-100 text-zinc-700',
+    iconBg: 'bg-cyan-50',
+    iconColor: 'text-cyan-700',
+    previewGradient: 'linear-gradient(135deg, #3f3f46 0%, #09090b 100%)',
+    mode: 'dark',
+  },
+  [ProjectTheme.NAVY]: {
+    id: ProjectTheme.NAVY,
+    label: 'Navy',
+    description: 'Deep blue palette for low-light focus.',
+    accent: '#2563eb',
+    accentSoft: 'bg-blue-50',
+    accentText: 'text-blue-700',
+    headerFrom: 'from-blue-900',
+    headerTo: 'to-slate-900',
+    cardBorder: 'border-blue-200',
+    pillBg: 'bg-blue-50 text-blue-700',
+    iconBg: 'bg-blue-50',
+    iconColor: 'text-blue-700',
+    previewGradient: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+    mode: 'dark',
   },
 };
 
-export function getProjectThemeMeta(theme: ProjectTheme): ProjectThemeMeta {
-  return PROJECT_THEME_META[theme] ?? PROJECT_THEME_META[ProjectTheme.CLASSIC];
+export function getProjectThemeMeta(theme: ProjectTheme | string): ProjectThemeMeta {
+  return PROJECT_THEME_META[normalizeProjectTheme(theme)];
 }
 
 export function listProjectThemes(): ProjectThemeMeta[] {

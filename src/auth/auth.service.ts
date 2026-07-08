@@ -45,6 +45,7 @@ import { MemberDepartment } from '../enum/member.enum';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUiThemeDto } from './dto/update-ui-theme.dto';
+import { normalizeAppUiTheme } from '../common/theme-normalize.util';
 import {
   canChangeOwnEmail,
   canRequestOwnEmailChange,
@@ -97,7 +98,9 @@ export type AuthTwoFactorChallengeResponse = {
   challengeToken: string;
 };
 
-export type AuthLoginResponse = AuthSessionResponse | AuthTwoFactorChallengeResponse;
+export type AuthLoginResponse =
+  | AuthSessionResponse
+  | AuthTwoFactorChallengeResponse;
 
 export type AuthSessionResponse = {
   message: string;
@@ -293,7 +296,7 @@ export class AuthService {
     };
   }
 
-  async verifyRegister(dto: VerifyRegisterDto): Promise<AuthSessionResponse> {
+  async verifyRegister(dto: VerifyRegisterDto): Promise<AuthLoginResponse> {
     const email = dto.email.trim().toLowerCase();
 
     const pending = await this.pendingRegistrationRepository.findOne({
@@ -356,9 +359,22 @@ export class AuthService {
       pending.email,
     );
 
+    const workspaceSettings = await this.getOrganizationWorkspaceSettings(
+      organization.id,
+    );
+
+    if (
+      this.isOrganizationTwoFactorEnforced(workspaceSettings, organization)
+    ) {
+      return {
+        message: `${organization.name} created successfully. Two-factor authentication required.`,
+        ...this.buildTwoFactorChallengeResponse(user, false),
+      };
+    }
+
     return {
       message: `${organization.name} created successfully. You are now the organization owner.`,
-      accessToken: this.signAccessToken(user, false),
+      accessToken: this.signAccessToken(user, false, workspaceSettings),
       user: await this.toAuthUserResponse(user, organization),
     };
   }
@@ -411,17 +427,12 @@ export class AuthService {
       user.organizationId,
     );
 
-    if (workspaceSettings.twoFactorRequired && !user.twoFactorEnabled) {
-      throw new ForbiddenException(
-        'Two-factor authentication is required for this workspace. Contact your workspace owner or admin to restore access.',
-      );
-    }
-
-    if (workspaceSettings.twoFactorRequired && user.twoFactorEnabled) {
+    if (
+      this.isOrganizationTwoFactorEnforced(workspaceSettings, user.organization)
+    ) {
       return {
         message: 'Two-factor authentication required.',
-        requiresTwoFactor: true,
-        challengeToken: this.signTwoFactorChallengeToken(user),
+        ...this.buildTwoFactorChallengeResponse(user, remember),
       };
     }
 
@@ -435,50 +446,38 @@ export class AuthService {
   async verifyTwoFactorChallenge(
     dto: VerifyTwoFactorDto,
   ): Promise<AuthSessionResponse> {
-    let payload: { sub?: string; type?: string };
+    const { user, remember } = await this.resolveUserFromTwoFactorChallenge(
+      dto.challengeToken,
+    );
 
-    try {
-      payload = this.jwtService.verify(dto.challengeToken);
-    } catch {
-      throw new UnauthorizedException(
-        'Two-factor challenge expired. Please sign in again.',
-      );
-    }
-
-    if (payload.type !== '2fa_challenge' || !payload.sub) {
-      throw new UnauthorizedException('Invalid two-factor challenge.');
-    }
-
-    const user = await this.userRepository.findOne({
-      where: { id: payload.sub },
-      relations: { organization: true },
-    });
-
-    if (!user?.twoFactorEnabled || !user.twoFactorSecret) {
-      throw new UnauthorizedException(
-        'Two-factor authentication is not enabled.',
-      );
-    }
-
-    if (
-      !user.twoFactorSecret ||
-      !(await verifyTwoFactorCode(user.twoFactorSecret, dto.code))
-    ) {
-      throw new UnauthorizedException('Invalid authentication code.');
-    }
-
-    user.lastActiveAt = new Date();
-    await this.userRepository.save(user);
+    const organization =
+      user.organization ??
+      (user.organizationId
+        ? await this.organizationRepository.findOne({
+            where: { id: user.organizationId },
+          })
+        : null);
 
     const workspaceSettings = await this.getOrganizationWorkspaceSettings(
       user.organizationId,
     );
 
-    return {
-      message: `Welcome back, ${user.fullName}.`,
-      accessToken: this.signAccessToken(user, false, workspaceSettings),
-      user: await this.toAuthUserResponse(user, user.organization),
-    };
+    if (
+      !this.isOrganizationTwoFactorEnforced(workspaceSettings, organization)
+    ) {
+      throw new UnauthorizedException(
+        'Two-factor authentication is not required for this workspace.',
+      );
+    }
+
+    if (
+      !organization?.twoFactorSecret ||
+      !(await verifyTwoFactorCode(organization.twoFactorSecret, dto.code))
+    ) {
+      throw new UnauthorizedException('Invalid authentication code.');
+    }
+
+    return this.completeAuthenticatedSession(user, remember);
   }
 
   async setupTwoFactor(userId: string) {
@@ -745,7 +744,7 @@ export class AuthService {
       throw new UnauthorizedException('User not found.');
     }
 
-    user.uiTheme = dto.uiTheme;
+    user.uiTheme = normalizeAppUiTheme(dto.uiTheme);
     await this.userRepository.save(user);
 
     return this.toAuthUserResponse(user, user.organization);
@@ -1064,7 +1063,7 @@ export class AuthService {
     };
   }
 
-  async acceptInvite(dto: AcceptInviteDto): Promise<AuthSessionResponse> {
+  async acceptInvite(dto: AcceptInviteDto): Promise<AuthLoginResponse> {
     const member = await this.findValidInviteMember(dto.token.trim());
     const organization = member.organization;
 
@@ -1100,9 +1099,22 @@ export class AuthService {
       });
     }
 
+    const workspaceSettings = await this.getOrganizationWorkspaceSettings(
+      organization.id,
+    );
+
+    if (
+      this.isOrganizationTwoFactorEnforced(workspaceSettings, organization)
+    ) {
+      return {
+        message: `Welcome to ${organization.name}, ${fullName}. Two-factor authentication required.`,
+        ...this.buildTwoFactorChallengeResponse(member, false),
+      };
+    }
+
     return {
       message: `Welcome to ${organization.name}, ${fullName}.`,
-      accessToken: this.signAccessToken(member, false),
+      accessToken: this.signAccessToken(member, false, workspaceSettings),
       user: await this.toAuthUserResponse(member, organization),
     };
   }
@@ -1257,10 +1269,81 @@ export class AuthService {
     return this.jwtService.sign(payload, { expiresIn: expiresIn as never });
   }
 
-  private signTwoFactorChallengeToken(user: User) {
+  private isOrganizationTwoFactorEnforced(
+    workspaceSettings: {
+      twoFactorRequired: boolean;
+    },
+    organization: Organization | null | undefined,
+  ) {
+    return (
+      workspaceSettings.twoFactorRequired &&
+      Boolean(organization?.twoFactorConfigured && organization.twoFactorSecret)
+    );
+  }
+
+  private buildTwoFactorChallengeResponse(
+    user: User,
+    remember: boolean,
+  ): Omit<AuthTwoFactorChallengeResponse, 'message'> {
+    return {
+      requiresTwoFactor: true,
+      challengeToken: this.signTwoFactorChallengeToken(user, remember),
+    };
+  }
+
+  private async resolveUserFromTwoFactorChallenge(challengeToken: string) {
+    let payload: { sub?: string; type?: string; remember?: boolean };
+
+    try {
+      payload = this.jwtService.verify(challengeToken);
+    } catch {
+      throw new UnauthorizedException(
+        'Two-factor challenge expired. Please sign in again.',
+      );
+    }
+
+    if (payload.type !== '2fa_challenge' || !payload.sub) {
+      throw new UnauthorizedException('Invalid two-factor challenge.');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { id: payload.sub },
+      relations: { organization: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    return {
+      user,
+      remember: payload.remember === true,
+    };
+  }
+
+  private async completeAuthenticatedSession(
+    user: User,
+    remember: boolean,
+    message?: string,
+  ) {
+    user.lastActiveAt = new Date();
+    await this.userRepository.save(user);
+
+    const workspaceSettings = await this.getOrganizationWorkspaceSettings(
+      user.organizationId,
+    );
+
+    return {
+      message: message ?? `Welcome back, ${user.fullName}.`,
+      accessToken: this.signAccessToken(user, remember, workspaceSettings),
+      user: await this.toAuthUserResponse(user, user.organization),
+    };
+  }
+
+  private signTwoFactorChallengeToken(user: User, remember = false) {
     return this.jwtService.sign(
-      { sub: user.id, type: '2fa_challenge' },
-      { expiresIn: '5m' },
+      { sub: user.id, type: '2fa_challenge', remember: remember === true },
+      { expiresIn: '10m' },
     );
   }
 
@@ -1303,7 +1386,7 @@ export class AuthService {
           }
         : null,
       requiresPlanSelection: await this.resolveRequiresPlanSelection(user),
-      uiTheme: user.uiTheme,
+      uiTheme: normalizeAppUiTheme(user.uiTheme),
       twoFactorEnabled: user.twoFactorEnabled,
     };
   }

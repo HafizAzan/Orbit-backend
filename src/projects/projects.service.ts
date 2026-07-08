@@ -8,7 +8,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import type { TeamMemberProjectDetail } from '../common/mappers/team.mapper';
 import {
   mapAssignableProjectMember,
@@ -23,7 +23,11 @@ import { Project } from '../entities/project.entity';
 import { Task } from '../entities/task.entity';
 import { User } from '../entities/user.entity';
 import { AccountStatus, RegisterAs } from '../enum/auth.enum';
-import { ProjectMemberRole, ProjectTheme } from '../enum/project.enum';
+import {
+  ProjectMemberRole,
+  ProjectStatus,
+  ProjectTheme,
+} from '../enum/project.enum';
 import { TaskStatus } from '../enum/task.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { ActivityService } from '../activity/activity.service';
@@ -49,10 +53,12 @@ import {
 import {
   canDeleteProject,
   canEditProject,
+  canMarkProjectComplete,
   canManageProjectMembership,
   hasOrgWideProjectAccess,
   isOperationalProjectLeadRole,
 } from './project-access.util';
+import { normalizeProjectTheme } from '../common/theme-normalize.util';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
@@ -127,19 +133,21 @@ export class ProjectsService {
   ) {
     await this.getAccessibleProject(user, projectId);
 
+    const theme = normalizeProjectTheme(dto.theme);
+
     const existing = await this.projectUserThemeRepository.findOne({
       where: { userId: user.sub, projectId },
     });
 
     if (existing) {
-      existing.theme = dto.theme;
+      existing.theme = theme;
       await this.projectUserThemeRepository.save(existing);
     } else {
       await this.projectUserThemeRepository.save(
         this.projectUserThemeRepository.create({
           userId: user.sub,
           projectId,
-          theme: dto.theme,
+          theme,
         }),
       );
     }
@@ -233,7 +241,9 @@ export class ProjectsService {
     if (dto.description !== undefined) project.description = dto.description.trim();
     if (dto.category) project.category = dto.category;
     if (dto.priority) project.priority = dto.priority;
-    if (dto.status) project.status = dto.status;
+    if (dto.status !== undefined && dto.status !== project.status) {
+      await this.applyProjectStatusChange(user, project, dto.status);
+    }
     if (dto.visibility) project.visibility = dto.visibility;
     if (dto.startDate !== undefined) project.startDate = dto.startDate ?? null;
     if (dto.dueDate !== undefined) project.dueDate = dto.dueDate ?? null;
@@ -1007,6 +1017,43 @@ export class ProjectsService {
     }
 
     return membership?.role ?? null;
+  }
+
+  private async applyProjectStatusChange(
+    user: JwtPayload,
+    project: Project,
+    nextStatus: ProjectStatus,
+  ) {
+    const isCompletionChange =
+      nextStatus === ProjectStatus.COMPLETED ||
+      project.status === ProjectStatus.COMPLETED;
+
+    if (isCompletionChange && !canMarkProjectComplete(user.role)) {
+      throw new ForbiddenException(
+        'Only workspace owners, admins, or managers can mark a project as done.',
+      );
+    }
+
+    if (nextStatus === ProjectStatus.COMPLETED) {
+      await this.ensureAllProjectTasksCompleted(project.id);
+    }
+
+    project.status = nextStatus;
+  }
+
+  private async ensureAllProjectTasksCompleted(projectId: string) {
+    const incompleteCount = await this.taskRepository.count({
+      where: {
+        projectId,
+        status: Not(TaskStatus.DONE),
+      },
+    });
+
+    if (incompleteCount > 0) {
+      throw new BadRequestException(
+        `Cannot mark project as done. ${incompleteCount} task(s) are still incomplete.`,
+      );
+    }
   }
 
   private async ensureUniqueProjectKey(

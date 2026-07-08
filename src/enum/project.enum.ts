@@ -2,6 +2,7 @@ export enum ProjectStatus {
   ON_TRACK = 'on_track',
   IN_PROGRESS = 'in_progress',
   DELAYED = 'delayed',
+  COMPLETED = 'completed',
 }
 
 export enum ProjectPriority {
@@ -31,9 +32,9 @@ export enum ProjectMemberRole {
 
 export enum ProjectTheme {
   CLASSIC = 'classic',
-  OCEAN = 'ocean',
-  SUNSET = 'sunset',
-  FOREST = 'forest',
-  ROYAL = 'royal',
-  MIDNIGHT = 'midnight',
+  TEAL = 'teal',
+  AMBER = 'amber',
+  DARK = 'dark',
+  ONYX = 'onyx',
+  NAVY = 'navy',
 }

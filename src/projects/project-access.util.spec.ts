@@ -4,6 +4,7 @@ import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import type { ProjectMember } from '../entities/project-member.entity';
 import {
   canDeleteProject,
+  canMarkProjectComplete,
   hasOrgWideProjectAccess,
   isProjectScopedWorkspaceRole,
 } from './project-access.util';
@@ -35,6 +36,15 @@ describe('isProjectScopedWorkspaceRole', () => {
     expect(isProjectScopedWorkspaceRole(RegisterAs.MANAGER)).toBe(true);
     expect(isProjectScopedWorkspaceRole(RegisterAs.MEMBER)).toBe(true);
     expect(isProjectScopedWorkspaceRole(RegisterAs.ADMIN)).toBe(false);
+  });
+});
+
+describe('canMarkProjectComplete', () => {
+  it('allows owner, admin, and manager only', () => {
+    expect(canMarkProjectComplete(RegisterAs.OWNER)).toBe(true);
+    expect(canMarkProjectComplete(RegisterAs.ADMIN)).toBe(true);
+    expect(canMarkProjectComplete(RegisterAs.MANAGER)).toBe(true);
+    expect(canMarkProjectComplete(RegisterAs.MEMBER)).toBe(false);
   });
 });
 

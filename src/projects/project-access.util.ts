@@ -30,6 +30,14 @@ export function canManageProjectMembership(
   return membership?.role === ProjectMemberRole.ADMIN;
 }
 
+export function canMarkProjectComplete(role: RegisterAs) {
+  return (
+    role === RegisterAs.OWNER ||
+    role === RegisterAs.ADMIN ||
+    role === RegisterAs.MANAGER
+  );
+}
+
 export function canEditProject(
   actor: JwtPayload,
   membership: ProjectMember | null,

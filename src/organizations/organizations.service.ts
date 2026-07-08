@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import {
@@ -65,6 +66,11 @@ import { ActivityService } from '../activity/activity.service';
 import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import { hasOrgWideProjectAccess } from '../projects/project-access.util';
 import { mergeOrganizationWorkspaceSettings } from '../common/types/organization-workspace-settings.type';
+import {
+  buildTwoFactorOtpAuthUrl,
+  generateTwoFactorSecret,
+  verifyTwoFactorCode,
+} from '../auth/two-factor.util';
 
 const ASSIGNABLE_MEMBER_ROLES: RegisterAs[] = [
   RegisterAs.ADMIN,
@@ -292,25 +298,14 @@ export class OrganizationsService {
         !wasTwoFactorRequired &&
         organization.workspaceSettings.twoFactorRequired
       ) {
-        const actor = await this.userRepository.findOne({
-          where: { id: user.sub },
-        });
-
-        if (!actor?.twoFactorEnabled) {
+        if (
+          !organization.twoFactorConfigured ||
+          !organization.twoFactorSecret
+        ) {
           throw new BadRequestException(
-            'Enable two-factor authentication on your account in Settings → Security before requiring it for the workspace.',
+            'Configure the workspace authenticator below before requiring two-factor authentication.',
           );
         }
-      }
-
-      if (
-        wasTwoFactorRequired &&
-        organization.workspaceSettings.twoFactorRequired === false
-      ) {
-        await this.userRepository.update(
-          { organizationId: organization.id },
-          { twoFactorEnabled: false, twoFactorSecret: null },
-        );
       }
     }
 
@@ -320,6 +315,58 @@ export class OrganizationsService {
       organization,
       organization.users?.length ?? 0,
     );
+  }
+
+  async getOrganizationTwoFactorStatus(user: JwtPayload) {
+    const organization = await this.getOrganizationForUser(user.organizationId!);
+
+    return {
+      configured: organization.twoFactorConfigured,
+      requiredByWorkspace:
+        organization.workspaceSettings?.twoFactorRequired ?? false,
+      pendingSetup: Boolean(
+        organization.twoFactorSecret && !organization.twoFactorConfigured,
+      ),
+    };
+  }
+
+  async setupOrganizationTwoFactor(user: JwtPayload) {
+    const organization = await this.getOrganizationForUser(user.organizationId!);
+    const secret = generateTwoFactorSecret();
+
+    organization.twoFactorSecret = secret;
+    organization.twoFactorConfigured = false;
+    await this.organizationRepository.save(organization);
+
+    return {
+      secret,
+      otpauthUrl: buildTwoFactorOtpAuthUrl(
+        `${organization.name} Workspace`,
+        secret,
+      ),
+    };
+  }
+
+  async confirmOrganizationTwoFactor(user: JwtPayload, code: string) {
+    const organization = await this.getOrganizationForUser(user.organizationId!);
+
+    if (!organization.twoFactorSecret) {
+      throw new BadRequestException(
+        'Start workspace two-factor setup before confirming it.',
+      );
+    }
+
+    if (!(await verifyTwoFactorCode(organization.twoFactorSecret, code))) {
+      throw new UnauthorizedException('Invalid authentication code.');
+    }
+
+    organization.twoFactorConfigured = true;
+    await this.organizationRepository.save(organization);
+
+    return {
+      message: 'Workspace authenticator configured successfully.',
+      configured: true,
+    };
   }
 
   async listCurrentMembers(
