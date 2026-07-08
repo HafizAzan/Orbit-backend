@@ -15,6 +15,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
+import { OrganizationSubscriptionActiveGuard } from '../auth/guards/organization-subscription-active.guard';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { CreateTaskDto, UpdateTaskDto } from './dto/task.dto';
 import { DashboardQueryDto, DashboardPeriod } from './dto/dashboard-query.dto';
@@ -23,7 +24,7 @@ import { taskAttachmentUploadOptions } from './task-attachment.storage';
 import { TasksService } from './tasks.service';
 
 @Controller('tasks')
-@UseGuards(JwtAuthGuard, OrganizationMemberGuard)
+@UseGuards(JwtAuthGuard, OrganizationMemberGuard, OrganizationSubscriptionActiveGuard)
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 

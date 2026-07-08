@@ -19,6 +19,14 @@ export function isProjectScopedWorkspaceRole(role: RegisterAs) {
   return role === RegisterAs.MANAGER || role === RegisterAs.MEMBER;
 }
 
+export function canCreateProject(role: RegisterAs) {
+  return (
+    role === RegisterAs.OWNER ||
+    role === RegisterAs.ADMIN ||
+    role === RegisterAs.MANAGER
+  );
+}
+
 export function canManageProjectMembership(
   actor: JwtPayload,
   membership: ProjectMember | null,
@@ -42,14 +50,22 @@ export function canEditProject(
   actor: JwtPayload,
   membership: ProjectMember | null,
 ) {
+  if (actor.role === RegisterAs.MEMBER) {
+    return false;
+  }
+
   if (hasOrgWideProjectAccess(actor.role)) {
     return true;
   }
 
-  return (
-    membership?.role === ProjectMemberRole.ADMIN ||
-    membership?.role === ProjectMemberRole.MEMBER
-  );
+  if (actor.role === RegisterAs.MANAGER) {
+    return (
+      membership?.role === ProjectMemberRole.ADMIN ||
+      membership?.role === ProjectMemberRole.MEMBER
+    );
+  }
+
+  return false;
 }
 
 export function canDeleteProject(

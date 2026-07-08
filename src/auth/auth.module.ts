@@ -17,6 +17,8 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { OrganizationBillingGuard } from './guards/organization-billing.guard';
+import { OrganizationMemberGuard } from './guards/organization-member.guard';
+import { OrganizationSubscriptionActiveGuard } from './guards/organization-subscription-active.guard';
 import { PlatformAdminGuard } from './guards/platform-admin.guard';
 import { RegisterRateLimitGuard } from './rate-limit/register-rate-limit.guard';
 import { RegisterRateLimitService } from './rate-limit/register-rate-limit.service';
@@ -62,6 +64,8 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
     JwtStrategy,
     JwtAuthGuard,
     OrganizationBillingGuard,
+    OrganizationMemberGuard,
+    OrganizationSubscriptionActiveGuard,
     PlatformAdminGuard,
     RegisterRateLimitService,
     RegisterRateLimitGuard,
@@ -73,6 +77,8 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
     PassportModule,
     JwtAuthGuard,
     OrganizationBillingGuard,
+    OrganizationMemberGuard,
+    OrganizationSubscriptionActiveGuard,
     PlatformAdminGuard,
   ],
 })

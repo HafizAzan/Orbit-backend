@@ -4,6 +4,10 @@ import type { Task } from '../entities/task.entity';
 import { hasOrgWideProjectAccess } from '../projects/project-access.util';
 import type { UpdateTaskDto } from './dto/task.dto';
 
+export function canOperateOnTasks(role: RegisterAs) {
+  return role !== RegisterAs.OWNER;
+}
+
 export function canViewAllOrganizationTasks(role: RegisterAs) {
   return (
     role === RegisterAs.OWNER ||
@@ -12,11 +16,19 @@ export function canViewAllOrganizationTasks(role: RegisterAs) {
   );
 }
 
+export function canAccessTeamInsights(role: RegisterAs) {
+  return canViewAllOrganizationTasks(role);
+}
+
 export function canDeleteAnyTask(user: JwtPayload) {
-  return canViewAllOrganizationTasks(user.role);
+  return canOperateOnTasks(user.role) && canViewAllOrganizationTasks(user.role);
 }
 
 export function canModifyTask(user: JwtPayload, task: Task) {
+  if (!canOperateOnTasks(user.role)) {
+    return false;
+  }
+
   if (hasOrgWideProjectAccess(user.role)) {
     return true;
   }

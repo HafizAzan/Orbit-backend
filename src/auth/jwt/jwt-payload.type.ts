@@ -6,4 +6,5 @@ export type JwtPayload = {
   role: RegisterAs;
   isPlatformAdmin: boolean;
   organizationId: string | null;
+  tokenVersion?: number;
 };

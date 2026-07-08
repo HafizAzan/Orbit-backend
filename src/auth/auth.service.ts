@@ -14,7 +14,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto';
 import { AcceptInviteDto } from '../dto/accept-invite.dto';
@@ -88,6 +88,7 @@ export type AuthUserResponse = {
     name: string;
   } | null;
   requiresPlanSelection: boolean;
+  organizationAwaitingSubscription: boolean;
   uiTheme: string;
   twoFactorEnabled: boolean;
 };
@@ -444,9 +445,22 @@ export class AuthService {
   async verifyTwoFactorChallenge(
     dto: VerifyTwoFactorDto,
   ): Promise<AuthSessionResponse> {
-    const { user, remember } = await this.resolveUserFromTwoFactorChallenge(
-      dto.challengeToken,
-    );
+    const { user, remember, challengeId } =
+      await this.resolveUserFromTwoFactorChallenge(dto.challengeToken);
+
+    if (user.accountStatus === AccountStatus.SUSPENDED) {
+      throw new UnauthorizedException('Your account has been suspended.');
+    }
+
+    if (user.accountStatus === AccountStatus.PENDING) {
+      throw new UnauthorizedException('Your account is not active yet.');
+    }
+
+    if (user.emailVerificationStatus !== EmailVerificationStatus.VERIFIED) {
+      throw new UnauthorizedException(
+        'Please verify your email before signing in.',
+      );
+    }
 
     const organization =
       user.organization ??
@@ -474,6 +488,9 @@ export class AuthService {
     ) {
       throw new UnauthorizedException('Invalid authentication code.');
     }
+
+    user.twoFactorChallengeId = null;
+    await this.userRepository.save(user);
 
     return this.completeAuthenticatedSession(user, remember);
   }
@@ -1115,12 +1132,10 @@ export class AuthService {
     };
   }
 
-  async resolveRequiresPlanSelection(user: User): Promise<boolean> {
+  async resolveOrganizationAwaitingSubscription(
+    user: User,
+  ): Promise<boolean> {
     if (!user.organizationId) {
-      return false;
-    }
-
-    if (user.role !== RegisterAs.OWNER && user.role !== RegisterAs.ADMIN) {
       return false;
     }
 
@@ -1133,6 +1148,14 @@ export class AuthService {
     }
 
     return subscription.planSelectedAt == null;
+  }
+
+  async resolveRequiresPlanSelection(user: User): Promise<boolean> {
+    if (user.role !== RegisterAs.OWNER && user.role !== RegisterAs.ADMIN) {
+      return false;
+    }
+
+    return this.resolveOrganizationAwaitingSubscription(user);
   }
 
   private async handleLoginWithoutUser(
@@ -1246,6 +1269,7 @@ export class AuthService {
       role: user.role,
       isPlatformAdmin: user.isPlatformAdmin,
       organizationId: user.organizationId,
+      tokenVersion: user.tokenVersion ?? 0,
     };
 
     const sessionExpiresIn = this.configService.get<string>(
@@ -1281,14 +1305,23 @@ export class AuthService {
     user: User,
     remember: boolean,
   ): Omit<AuthTwoFactorChallengeResponse, 'message'> {
+    const challengeId = randomUUID();
+    user.twoFactorChallengeId = challengeId;
+    void this.userRepository.update(user.id, { twoFactorChallengeId: challengeId });
+
     return {
       requiresTwoFactor: true,
-      challengeToken: this.signTwoFactorChallengeToken(user, remember),
+      challengeToken: this.signTwoFactorChallengeToken(user, remember, challengeId),
     };
   }
 
   private async resolveUserFromTwoFactorChallenge(challengeToken: string) {
-    let payload: { sub?: string; type?: string; remember?: boolean };
+    let payload: {
+      sub?: string;
+      type?: string;
+      remember?: boolean;
+      challengeId?: string;
+    };
 
     try {
       payload = this.jwtService.verify(challengeToken);
@@ -1311,9 +1344,19 @@ export class AuthService {
       throw new UnauthorizedException('User not found.');
     }
 
+    if (
+      !payload.challengeId ||
+      payload.challengeId !== user.twoFactorChallengeId
+    ) {
+      throw new UnauthorizedException(
+        'Two-factor challenge expired. Please sign in again.',
+      );
+    }
+
     return {
       user,
       remember: payload.remember === true,
+      challengeId: payload.challengeId,
     };
   }
 
@@ -1336,9 +1379,23 @@ export class AuthService {
     };
   }
 
-  private signTwoFactorChallengeToken(user: User, remember = false) {
+  async invalidateUserSessions(userId: string) {
+    await this.userRepository.increment({ id: userId }, 'tokenVersion', 1);
+    await this.userRepository.update(userId, { twoFactorChallengeId: null });
+  }
+
+  private signTwoFactorChallengeToken(
+    user: User,
+    remember = false,
+    challengeId?: string,
+  ) {
     return this.jwtService.sign(
-      { sub: user.id, type: '2fa_challenge', remember: remember === true },
+      {
+        sub: user.id,
+        type: '2fa_challenge',
+        remember: remember === true,
+        ...(challengeId ? { challengeId } : {}),
+      },
       { expiresIn: '10m' },
     );
   }
@@ -1382,6 +1439,8 @@ export class AuthService {
           }
         : null,
       requiresPlanSelection: await this.resolveRequiresPlanSelection(user),
+      organizationAwaitingSubscription:
+        await this.resolveOrganizationAwaitingSubscription(user),
       uiTheme: normalizeAppUiTheme(user.uiTheme),
       twoFactorEnabled: user.twoFactorEnabled,
     };

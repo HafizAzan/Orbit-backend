@@ -16,6 +16,8 @@ import type { Server, Socket } from 'socket.io';
 import { Repository } from 'typeorm';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { User } from '../entities/user.entity';
+import { Subscription } from '../entities/subscription.entity';
+import { isOrganizationSubscriptionActive } from '../billing/organization-subscription.util';
 import { PresenceService } from './presence.service';
 
 type AuthenticatedSocket = Socket & {
@@ -44,6 +46,8 @@ export class RealtimeGateway
     private readonly presenceService: PresenceService,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(Subscription)
+    private readonly subscriptionRepository: Repository<Subscription>,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket) {
@@ -59,6 +63,17 @@ export class RealtimeGateway
 
       const payload = await this.jwtService.verifyAsync<JwtPayload>(token);
       client.user = payload;
+
+      if (
+        payload.organizationId &&
+        !(await isOrganizationSubscriptionActive(
+          this.subscriptionRepository,
+          payload.organizationId,
+        ))
+      ) {
+        client.disconnect(true);
+        return;
+      }
 
       await client.join(this.userRoom(payload.sub));
 

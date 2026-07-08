@@ -6,6 +6,10 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Repository } from 'typeorm';
 import { Organization } from '../../entities/organization.entity';
 import { User } from '../../entities/user.entity';
+import {
+  AccountStatus,
+  EmailVerificationStatus,
+} from '../../enum/auth.enum';
 import { DEFAULT_ORGANIZATION_WORKSPACE_SETTINGS } from '../../common/types/organization-workspace-settings.type';
 import type { JwtPayload } from './jwt-payload.type';
 
@@ -43,6 +47,34 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Invalid access token.');
     }
 
+    if (user.accountStatus === AccountStatus.SUSPENDED) {
+      throw new UnauthorizedException('Your account has been suspended.');
+    }
+
+    if (user.accountStatus === AccountStatus.PENDING) {
+      throw new UnauthorizedException('Your account is not active yet.');
+    }
+
+    if (
+      user.emailVerificationStatus !== EmailVerificationStatus.VERIFIED &&
+      !user.isPlatformAdmin
+    ) {
+      throw new UnauthorizedException('Please verify your email before continuing.');
+    }
+
+    const tokenVersion = payload.tokenVersion ?? 0;
+    if (tokenVersion !== (user.tokenVersion ?? 0)) {
+      throw new UnauthorizedException(
+        'Your session is no longer valid. Please sign in again.',
+      );
+    }
+
+    if (payload.role !== user.role) {
+      throw new UnauthorizedException(
+        'Your session is no longer valid. Please sign in again.',
+      );
+    }
+
     if (user.organizationId && !user.isPlatformAdmin) {
       const organization = await this.organizationRepository.findOne({
         where: { id: user.organizationId },
@@ -70,6 +102,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       await this.userRepository.update(user.id, { lastActiveAt: new Date() });
     }
 
-    return payload;
+    return {
+      ...payload,
+      role: user.role,
+      organizationId: user.organizationId,
+      isPlatformAdmin: user.isPlatformAdmin,
+      tokenVersion: user.tokenVersion ?? 0,
+    };
   }
 }

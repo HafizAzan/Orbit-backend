@@ -38,9 +38,11 @@ import {
 import { NotificationsService } from '../notifications/notifications.service';
 import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import {
+  canAccessTeamInsights,
   canDeleteAnyTask,
   canMemberUpdateTaskStatus,
   canModifyTask,
+  canOperateOnTasks,
   canViewAllOrganizationTasks,
   getMemberTaskUpdateViolation,
 } from './task-access.util';
@@ -87,6 +89,12 @@ export class TasksService {
     user: JwtPayload,
     query: ListTasksQueryDto = {},
   ): Promise<PaginatedResponse<ReturnType<typeof mapWorkspaceTaskResponse>>> {
+    if (!canAccessTeamInsights(user.role)) {
+      throw new ForbiddenException(
+        'Team task lists are only available to owners, admins, and managers.',
+      );
+    }
+
     const { page, limit, skip, take } = resolvePagination(query);
     const [tasks, total] = await this.findAccessibleTasksPaginated(user, {
       skip,
@@ -126,7 +134,7 @@ export class TasksService {
   }
 
   async createTask(user: JwtPayload, dto: CreateTaskDto) {
-    if (user.role === RegisterAs.OWNER) {
+    if (!canOperateOnTasks(user.role)) {
       throw new ForbiddenException(
         'Organization owners oversee delivery but cannot create tasks. Ask your delivery lead or admin.',
       );
@@ -195,6 +203,12 @@ export class TasksService {
 
   async updateTask(user: JwtPayload, taskId: string, dto: UpdateTaskDto) {
     const task = await this.getAccessibleTask(user, taskId, true);
+
+    if (!canOperateOnTasks(user.role)) {
+      throw new ForbiddenException(
+        'Organization owners oversee delivery but cannot edit tasks. Ask your delivery lead or admin.',
+      );
+    }
 
     if (user.role === RegisterAs.MEMBER) {
       const violation = getMemberTaskUpdateViolation(dto);
@@ -378,6 +392,12 @@ export class TasksService {
   async deleteTask(user: JwtPayload, taskId: string) {
     const task = await this.getAccessibleTask(user, taskId, true);
 
+    if (!canOperateOnTasks(user.role)) {
+      throw new ForbiddenException(
+        'Organization owners oversee delivery but cannot delete tasks. Ask your delivery lead or admin.',
+      );
+    }
+
     if (user.role === RegisterAs.MEMBER) {
       throw new ForbiddenException('Members cannot delete tasks.');
     }
@@ -420,6 +440,12 @@ export class TasksService {
     user: JwtPayload,
     period: DashboardPeriod = DashboardPeriod.THIS_MONTH,
   ) {
+    if (!canAccessTeamInsights(user.role)) {
+      throw new ForbiddenException(
+        'Dashboard is only available to owners, admins, and managers.',
+      );
+    }
+
     const range = getDashboardPeriodRange(period);
 
     const [projects, tasks, squadIds] = await Promise.all([
@@ -537,6 +563,12 @@ export class TasksService {
   }
 
   async getReports(user: JwtPayload) {
+    if (!canAccessTeamInsights(user.role)) {
+      throw new ForbiddenException(
+        'Reports are only available to owners, admins, and managers.',
+      );
+    }
+
     const [projects, tasks] = await Promise.all([
       this.findAccessibleProjects(user),
       this.findAccessibleTasks(user),

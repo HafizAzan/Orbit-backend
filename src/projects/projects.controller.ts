@@ -12,6 +12,7 @@ import {
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
+import { OrganizationSubscriptionActiveGuard } from '../auth/guards/organization-subscription-active.guard';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import {
   AddProjectMemberDto,
@@ -32,7 +33,7 @@ import { ProjectCommentsService } from './project-comments.service';
 import { ProjectsService } from './projects.service';
 
 @Controller('projects')
-@UseGuards(JwtAuthGuard, OrganizationMemberGuard)
+@UseGuards(JwtAuthGuard, OrganizationMemberGuard, OrganizationSubscriptionActiveGuard)
 export class ProjectsController {
   constructor(
     private readonly projectsService: ProjectsService,

@@ -12,6 +12,7 @@ import {
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
+import { OrganizationSubscriptionActiveGuard } from '../auth/guards/organization-subscription-active.guard';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { CalendarService } from './calendar.service';
 import {
@@ -22,7 +23,7 @@ import {
 } from './dto/calendar.dto';
 
 @Controller('calendar')
-@UseGuards(JwtAuthGuard, OrganizationMemberGuard)
+@UseGuards(JwtAuthGuard, OrganizationMemberGuard, OrganizationSubscriptionActiveGuard)
 export class CalendarController {
   constructor(private readonly calendarService: CalendarService) {}
 

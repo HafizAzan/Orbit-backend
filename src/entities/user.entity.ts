@@ -104,6 +104,17 @@ export class User {
   @Column({ name: 'last_active_at', type: 'timestamptz', nullable: true })
   lastActiveAt: Date | null;
 
+  @Column({ name: 'token_version', type: 'integer', default: 0 })
+  tokenVersion: number;
+
+  @Column({
+    name: 'two_factor_challenge_id',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  twoFactorChallengeId: string | null;
+
   @Column({ name: 'two_factor_enabled', default: false })
   twoFactorEnabled: boolean;
 

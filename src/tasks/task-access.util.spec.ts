@@ -2,7 +2,11 @@ import { RegisterAs } from '../enum/auth.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import type { Task } from '../entities/task.entity';
 import {
+  canAccessTeamInsights,
   canMemberUpdateTaskStatus,
+  canDeleteAnyTask,
+  canModifyTask,
+  canOperateOnTasks,
   getMemberTaskUpdateViolation,
 } from './task-access.util';
 
@@ -45,5 +49,29 @@ describe('member task access', () => {
     expect(
       canMemberUpdateTaskStatus(memberUser(), assignedTask('other-user')),
     ).toBe(false);
+  });
+});
+
+describe('team insights access', () => {
+  it('allows owner, admin, and manager only', () => {
+    expect(canAccessTeamInsights(RegisterAs.OWNER)).toBe(true);
+    expect(canAccessTeamInsights(RegisterAs.ADMIN)).toBe(true);
+    expect(canAccessTeamInsights(RegisterAs.MANAGER)).toBe(true);
+    expect(canAccessTeamInsights(RegisterAs.MEMBER)).toBe(false);
+  });
+});
+
+describe('owner task access', () => {
+  const ownerUser: JwtPayload = {
+    sub: 'owner-1',
+    role: RegisterAs.OWNER,
+    organizationId: 'org-1',
+    email: 'owner@example.com',
+  };
+
+  it('cannot operate on tasks', () => {
+    expect(canOperateOnTasks(RegisterAs.OWNER)).toBe(false);
+    expect(canDeleteAnyTask(ownerUser)).toBe(false);
+    expect(canModifyTask(ownerUser, assignedTask())).toBe(false);
   });
 });

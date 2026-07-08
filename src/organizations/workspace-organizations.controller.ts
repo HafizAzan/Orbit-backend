@@ -13,6 +13,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrganizationAdminGuard } from '../auth/guards/organization-admin.guard';
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
+import { OrganizationSubscriptionActiveGuard } from '../auth/guards/organization-subscription-active.guard';
+import { OrganizationOwnerGuard } from '../auth/guards/organization-owner.guard';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { ListMembersQueryDto } from '../common/dto/list-members-query.dto';
 import {
@@ -21,10 +23,11 @@ import {
   UpdateWorkspaceOrganizationDto,
 } from './dto/workspace-organization.dto';
 import { ConfirmOrganizationTwoFactorDto } from './dto/organization-two-factor.dto';
+import { TransferOrganizationOwnershipDto } from './dto/transfer-organization-ownership.dto';
 import { OrganizationsService } from './organizations.service';
 
 @Controller('organizations')
-@UseGuards(JwtAuthGuard, OrganizationMemberGuard)
+@UseGuards(JwtAuthGuard, OrganizationMemberGuard, OrganizationSubscriptionActiveGuard)
 export class WorkspaceOrganizationsController {
   constructor(private readonly organizationsService: OrganizationsService) {}
 
@@ -69,6 +72,27 @@ export class WorkspaceOrganizationsController {
       user,
       dto.code,
     );
+  }
+
+  @Post('me/2fa/disable')
+  @UseGuards(OrganizationAdminGuard)
+  disableTwoFactor(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ConfirmOrganizationTwoFactorDto,
+  ) {
+    return this.organizationsService.disableOrganizationTwoFactor(
+      user,
+      dto.code,
+    );
+  }
+
+  @Post('me/transfer-ownership')
+  @UseGuards(OrganizationOwnerGuard)
+  transferOwnership(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: TransferOrganizationOwnershipDto,
+  ) {
+    return this.organizationsService.transferOwnership(user, dto);
   }
 
   @Get('me/members')

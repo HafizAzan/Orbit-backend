@@ -14,6 +14,7 @@ import {
 } from '../common/dto/pagination-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as argon2 from 'argon2';
 import {
   buildActiveSubscriptionDates,
   buildCountStatMetric,
@@ -21,6 +22,10 @@ import {
   buildTrialSubscriptionDates,
   getDefaultAmountCents,
 } from '../common/utils/billing.util';
+import {
+  ensureNotLastActiveAdmin,
+  invalidateUserSessions,
+} from '../common/utils/session-invalidation.util';
 import {
   mapOrganizationMembersSummary,
   mapOrganizationMemberResponse,
@@ -57,6 +62,7 @@ import {
   UpdateOrganizationDto,
 } from './dto/organization.dto';
 import { UpdateWorkspaceOrganizationDto } from './dto/workspace-organization.dto';
+import { TransferOrganizationOwnershipDto } from './dto/transfer-organization-ownership.dto';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { ListMembersQueryDto } from '../common/dto/list-members-query.dto';
 import { filterOrganizationMembersForList } from '../common/utils/filter-organization-members.util';
@@ -349,6 +355,13 @@ export class OrganizationsService {
     const organization = await this.getOrganizationForUser(
       user.organizationId!,
     );
+
+    if (organization.twoFactorConfigured) {
+      throw new BadRequestException(
+        'Disable the current workspace authenticator before setting up a new one.',
+      );
+    }
+
     const secret = generateTwoFactorSecret();
 
     organization.twoFactorSecret = secret;
@@ -385,6 +398,39 @@ export class OrganizationsService {
     return {
       message: 'Workspace authenticator configured successfully.',
       configured: true,
+    };
+  }
+
+  async disableOrganizationTwoFactor(user: JwtPayload, code: string) {
+    const organization = await this.getOrganizationForUser(
+      user.organizationId!,
+    );
+
+    if (!organization.twoFactorSecret || !organization.twoFactorConfigured) {
+      throw new BadRequestException(
+        'Workspace authenticator is not configured.',
+      );
+    }
+
+    if (!(await verifyTwoFactorCode(organization.twoFactorSecret, code))) {
+      throw new UnauthorizedException('Invalid authentication code.');
+    }
+
+    organization.twoFactorSecret = null;
+    organization.twoFactorConfigured = false;
+
+    if (organization.workspaceSettings) {
+      organization.workspaceSettings = {
+        ...organization.workspaceSettings,
+        twoFactorRequired: false,
+      };
+    }
+
+    await this.organizationRepository.save(organization);
+
+    return {
+      message: 'Workspace authenticator removed successfully.',
+      configured: false,
     };
   }
 
@@ -502,8 +548,17 @@ export class OrganizationsService {
       );
     }
 
+    if (member.role === RegisterAs.ADMIN && role !== RegisterAs.ADMIN) {
+      await ensureNotLastActiveAdmin(
+        this.userRepository,
+        actor.organizationId!,
+        member,
+      );
+    }
+
     member.role = role;
     await this.userRepository.save(member);
+    await invalidateUserSessions(this.userRepository, member.id);
 
     await this.activityService.recordForUser(actor, {
       module: ActivityModule.MEMBERS,
@@ -579,6 +634,88 @@ export class OrganizationsService {
     return mapOrganizationMemberResponse(member);
   }
 
+  async transferOwnership(
+    actor: JwtPayload,
+    dto: TransferOrganizationOwnershipDto,
+  ) {
+    if (actor.role !== RegisterAs.OWNER) {
+      throw new ForbiddenException(
+        'Only the organization owner can transfer ownership.',
+      );
+    }
+
+    const currentOwner = await this.userRepository.findOne({
+      where: { id: actor.sub },
+    });
+
+    if (!currentOwner?.passwordHash) {
+      throw new BadRequestException('Unable to verify your password.');
+    }
+
+    const isPasswordValid = await argon2.verify(
+      currentOwner.passwordHash,
+      dto.password,
+    );
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid password.');
+    }
+
+    const target = await this.getOrganizationMember(
+      actor.organizationId!,
+      dto.targetMemberId,
+    );
+
+    if (target.id === actor.sub) {
+      throw new BadRequestException(
+        'You cannot transfer ownership to yourself.',
+      );
+    }
+
+    if (target.role !== RegisterAs.ADMIN) {
+      throw new BadRequestException(
+        'Ownership can only be transferred to an active workspace admin.',
+      );
+    }
+
+    if (target.accountStatus !== AccountStatus.ACTIVE) {
+      throw new BadRequestException(
+        'Ownership can only be transferred to an active workspace admin.',
+      );
+    }
+
+    currentOwner.role = RegisterAs.ADMIN;
+    target.role = RegisterAs.OWNER;
+
+    await this.userRepository.save([currentOwner, target]);
+    await invalidateUserSessions(this.userRepository, currentOwner.id);
+    await invalidateUserSessions(this.userRepository, target.id);
+
+    const organization = await this.getOrganizationForUser(actor.organizationId!);
+    organization.billingEmail = target.email;
+    await this.organizationRepository.save(organization);
+
+    await this.activityService.recordForUser(actor, {
+      module: ActivityModule.ORGANIZATION,
+      action: ActivityAction.ROLE_CHANGED,
+      summary: `Transferred organization ownership to ${target.fullName}`,
+      targetLabel: target.fullName,
+      resourceType: 'user',
+      resourceId: target.id,
+      metadata: {
+        previousOwnerId: currentOwner.id,
+        newOwnerId: target.id,
+        transfer: true,
+      },
+    });
+
+    return {
+      message: `Ownership transferred to ${target.fullName}. Sign in again to continue with your updated role.`,
+      requiresReauth: true,
+      newOwner: mapOrganizationMemberResponse(target),
+    };
+  }
+
   async removeMember(actor: JwtPayload, memberId: string) {
     const member = await this.getOrganizationMember(
       actor.organizationId!,
@@ -595,8 +732,15 @@ export class OrganizationsService {
       throw new ForbiddenException('The organization owner cannot be removed.');
     }
 
+    await ensureNotLastActiveAdmin(
+      this.userRepository,
+      actor.organizationId!,
+      member,
+    );
+
     member.accountStatus = AccountStatus.SUSPENDED;
     await this.userRepository.save(member);
+    await invalidateUserSessions(this.userRepository, member.id);
 
     await this.activityService.recordForUser(actor, {
       module: ActivityModule.MEMBERS,

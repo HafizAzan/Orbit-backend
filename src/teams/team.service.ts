@@ -31,6 +31,11 @@ import {
 } from '../enum/auth.enum';
 import { MemberDepartment } from '../enum/member.enum';
 import { PlanCode } from '../enum/billing.enum';
+import {
+  ensureNotLastActiveAdmin,
+  invalidateUserSessions,
+} from '../common/utils/session-invalidation.util';
+import { hasOrgWideProjectAccess } from '../projects/project-access.util';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import {
   InviteTeamMemberDto,
@@ -41,7 +46,6 @@ import { ProjectsService } from '../projects/projects.service';
 import { ActivityService } from '../activity/activity.service';
 import { PresenceService } from '../realtime/presence.service';
 import { ActivityAction, ActivityModule } from '../enum/activity.enum';
-import { hasOrgWideProjectAccess } from '../projects/project-access.util';
 import { ListMembersQueryDto } from '../common/dto/list-members-query.dto';
 import {
   paginateArray,
@@ -237,8 +241,33 @@ export class TeamService {
     };
   }
 
-  getPresence(user: JwtPayload) {
-    return this.presenceService.getOrgPresence(user.organizationId!);
+  async getPresence(user: JwtPayload) {
+    const snapshot = this.presenceService.getOrgPresence(user.organizationId!);
+
+    if (hasOrgWideProjectAccess(user.role)) {
+      return snapshot;
+    }
+
+    if (user.role === RegisterAs.MANAGER) {
+      return this.filterPresenceForManager(user, snapshot);
+    }
+
+    return {
+      onlineUserIds: snapshot.onlineUserIds.filter((userId) => userId === user.sub),
+    };
+  }
+
+  private async filterPresenceForManager(
+    user: JwtPayload,
+    snapshot: { onlineUserIds: string[] },
+  ) {
+    const squadIds = await this.projectsService.getSquadUserIds(user);
+
+    return {
+      onlineUserIds: snapshot.onlineUserIds.filter((userId) =>
+        squadIds.has(userId),
+      ),
+    };
   }
 
   async removeMemberFromSquad(actor: JwtPayload, memberId: string) {
@@ -363,8 +392,17 @@ export class TeamService {
       );
     }
 
+    if (member.role === RegisterAs.ADMIN && dto.role !== RegisterAs.ADMIN) {
+      await ensureNotLastActiveAdmin(
+        this.userRepository,
+        actor.organizationId!,
+        member,
+      );
+    }
+
     member.role = dto.role;
     await this.userRepository.save(member);
+    await invalidateUserSessions(this.userRepository, member.id);
 
     await this.activityService.recordForUser(actor, {
       module: ActivityModule.TEAMS,
@@ -402,6 +440,11 @@ export class TeamService {
     }
 
     if (dto.status === 'deactivated') {
+      await ensureNotLastActiveAdmin(
+        this.userRepository,
+        actor.organizationId!,
+        member,
+      );
       member.accountStatus = AccountStatus.SUSPENDED;
     } else {
       if (
@@ -417,6 +460,9 @@ export class TeamService {
     }
 
     await this.userRepository.save(member);
+    if (dto.status === 'deactivated') {
+      await invalidateUserSessions(this.userRepository, member.id);
+    }
 
     return this.mapMemberWithProjectCount(actor.organizationId!, member);
   }

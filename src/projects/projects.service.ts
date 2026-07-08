@@ -51,6 +51,7 @@ import {
   ListProjectMembersQueryDto,
 } from './dto/project-list-query.dto';
 import {
+  canCreateProject,
   canDeleteProject,
   canEditProject,
   canMarkProjectComplete,
@@ -156,6 +157,12 @@ export class ProjectsService {
   }
 
   async createProject(user: JwtPayload, dto: CreateProjectDto) {
+    if (!canCreateProject(user.role)) {
+      throw new ForbiddenException(
+        'Only workspace owners, admins, or managers can create projects.',
+      );
+    }
+
     const organizationId = user.organizationId!;
 
     await this.ensureUniqueProjectKey(
@@ -924,6 +931,18 @@ export class ProjectsService {
       );
     }
 
+    if (user.role === RegisterAs.MANAGER) {
+      const squadIds = await this.getSquadUserIds(user);
+
+      return activeUsers.filter(
+        (member) =>
+          squadIds.has(member.id) &&
+          (member.role === RegisterAs.MEMBER ||
+            member.role === RegisterAs.MANAGER ||
+            member.role === RegisterAs.ADMIN),
+      );
+    }
+
     return activeUsers.filter(
       (member) =>
         member.role === RegisterAs.MEMBER ||
@@ -954,6 +973,12 @@ export class ProjectsService {
   ) {
     if (user.role === RegisterAs.MANAGER) {
       return user.sub;
+    }
+
+    if (user.role === RegisterAs.MEMBER) {
+      throw new ForbiddenException(
+        'Only workspace owners, admins, or managers can create projects.',
+      );
     }
 
     if (user.role === RegisterAs.OWNER) {

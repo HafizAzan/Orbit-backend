@@ -11,6 +11,7 @@ import { WorkspaceOrganizationsController } from './workspace-organizations.cont
 import { OrganizationsService } from './organizations.service';
 import { OrganizationAdminGuard } from '../auth/guards/organization-admin.guard';
 import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
+import { OrganizationOwnerGuard } from '../auth/guards/organization-owner.guard';
 
 @Module({
   imports: [
@@ -24,11 +25,13 @@ import { OrganizationMemberGuard } from '../auth/guards/organization-member.guar
     OrganizationsService,
     OrganizationMemberGuard,
     OrganizationAdminGuard,
+    OrganizationOwnerGuard,
   ],
   exports: [
     OrganizationsService,
     OrganizationMemberGuard,
     OrganizationAdminGuard,
+    OrganizationOwnerGuard,
   ],
 })
 export class OrganizationsModule {}

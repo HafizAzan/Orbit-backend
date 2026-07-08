@@ -3,7 +3,9 @@ import { ProjectMemberRole } from '../enum/project.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import type { ProjectMember } from '../entities/project-member.entity';
 import {
+  canCreateProject,
   canDeleteProject,
+  canEditProject,
   canMarkProjectComplete,
   hasOrgWideProjectAccess,
   isProjectScopedWorkspaceRole,
@@ -45,6 +47,35 @@ describe('canMarkProjectComplete', () => {
     expect(canMarkProjectComplete(RegisterAs.ADMIN)).toBe(true);
     expect(canMarkProjectComplete(RegisterAs.MANAGER)).toBe(true);
     expect(canMarkProjectComplete(RegisterAs.MEMBER)).toBe(false);
+  });
+});
+
+describe('canCreateProject', () => {
+  it('allows owner, admin, and manager only', () => {
+    expect(canCreateProject(RegisterAs.OWNER)).toBe(true);
+    expect(canCreateProject(RegisterAs.ADMIN)).toBe(true);
+    expect(canCreateProject(RegisterAs.MANAGER)).toBe(true);
+    expect(canCreateProject(RegisterAs.MEMBER)).toBe(false);
+  });
+});
+
+describe('canEditProject', () => {
+  it('denies workspace members even with project admin role', () => {
+    expect(
+      canEditProject(
+        actor(RegisterAs.MEMBER, 'member-1'),
+        membership(ProjectMemberRole.ADMIN),
+      ),
+    ).toBe(false);
+  });
+
+  it('allows managers with project membership', () => {
+    expect(
+      canEditProject(
+        actor(RegisterAs.MANAGER, 'manager-1'),
+        membership(ProjectMemberRole.MEMBER),
+      ),
+    ).toBe(true);
   });
 });
 
