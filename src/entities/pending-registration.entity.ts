@@ -1,8 +1,4 @@
-import {
-  AuthProvider,
-  RegisterAs,
-  SignupSource,
-} from '../enum/auth.enum';
+import { AuthProvider, RegisterAs, SignupSource } from '../enum/auth.enum';
 import {
   Column,
   CreateDateColumn,

@@ -172,6 +172,10 @@ export class ProjectsController {
     @Param('projectId') projectId: string,
     @Param('commentId') commentId: string,
   ) {
-    return this.projectCommentsService.deleteComment(user, projectId, commentId);
+    return this.projectCommentsService.deleteComment(
+      user,
+      projectId,
+      commentId,
+    );
   }
 }

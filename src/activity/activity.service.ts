@@ -75,8 +75,16 @@ export class ActivityService {
     return this.activityRepository.save(event);
   }
 
-  async recordForUser(user: JwtPayload, input: Omit<RecordActivityInput, 'actorId' | 'actorName' | 'actorRole' | 'organizationId'>) {
-    const actor = await this.userRepository.findOne({ where: { id: user.sub } });
+  async recordForUser(
+    user: JwtPayload,
+    input: Omit<
+      RecordActivityInput,
+      'actorId' | 'actorName' | 'actorRole' | 'organizationId'
+    >,
+  ) {
+    const actor = await this.userRepository.findOne({
+      where: { id: user.sub },
+    });
 
     if (!actor || !user.organizationId) {
       return null;
@@ -135,7 +143,9 @@ export class ActivityService {
     }
 
     if (!canDeleteActivity(user, event)) {
-      throw new ForbiddenException('You do not have permission to delete this activity log.');
+      throw new ForbiddenException(
+        'You do not have permission to delete this activity log.',
+      );
     }
 
     await this.activityRepository.delete(event.id);
@@ -159,7 +169,10 @@ export class ActivityService {
     return qb.skip(skip).take(take).getMany();
   }
 
-  private async createVisibleQuery(user: JwtPayload, query: ListActivityQueryDto) {
+  private async createVisibleQuery(
+    user: JwtPayload,
+    query: ListActivityQueryDto,
+  ) {
     const qb = this.activityRepository
       .createQueryBuilder('activity')
       .where('activity.organization_id = :organizationId', {
@@ -193,7 +206,8 @@ export class ActivityService {
     }
 
     if (user.role === RegisterAs.MANAGER) {
-      const projectIds = await this.projectsService.resolveAccessibleProjectIds(user);
+      const projectIds =
+        await this.projectsService.resolveAccessibleProjectIds(user);
       const squadIds = [...(await this.projectsService.getSquadUserIds(user))];
 
       qb.andWhere('activity.module IN (:...modules)', {
@@ -217,7 +231,9 @@ export class ActivityService {
                   .where('activity.module = :teamsModule', {
                     teamsModule: ActivityModule.TEAMS,
                   })
-                  .andWhere('activity.actor_id IN (:...squadIds)', { squadIds });
+                  .andWhere('activity.actor_id IN (:...squadIds)', {
+                    squadIds,
+                  });
               }),
             );
           }

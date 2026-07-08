@@ -54,7 +54,9 @@ function buildInitials(name: string) {
   return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
 }
 
-export function mapTaskAssignee(user: User | null | undefined): TaskAssigneeSummary | null {
+export function mapTaskAssignee(
+  user: User | null | undefined,
+): TaskAssigneeSummary | null {
   if (!user) {
     return null;
   }
@@ -69,7 +71,9 @@ export function mapTaskAssignee(user: User | null | undefined): TaskAssigneeSumm
   };
 }
 
-export function mapTaskAttachmentResponse(attachment: TaskAttachment): TaskAttachmentResponse {
+export function mapTaskAttachmentResponse(
+  attachment: TaskAttachment,
+): TaskAttachmentResponse {
   return {
     id: attachment.id,
     fileName: attachment.fileName,
@@ -117,7 +121,8 @@ export function mapKanbanTask(task: Task) {
     title: task.title,
     description: task.description || undefined,
     priority:
-      task.priority === TaskPriority.CRITICAL || task.priority === TaskPriority.HIGH
+      task.priority === TaskPriority.CRITICAL ||
+      task.priority === TaskPriority.HIGH
         ? 'high'
         : task.priority === TaskPriority.LOW
           ? 'low'

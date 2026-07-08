@@ -30,13 +30,23 @@ export class Organization {
   })
   status: OrganizationStatus;
 
-  @Column({ name: 'billing_email', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'billing_email',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   billingEmail: string | null;
 
   @Column({ name: 'workspace_settings', type: 'jsonb', nullable: true })
   workspaceSettings: OrganizationWorkspaceSettings | null;
 
-  @Column({ name: 'two_factor_secret', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'two_factor_secret',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   twoFactorSecret: string | null;
 
   @Column({ name: 'two_factor_configured', default: false })

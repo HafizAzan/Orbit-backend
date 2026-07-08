@@ -8,7 +8,10 @@ import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Subscription, Organization, User]), AuthModule],
+  imports: [
+    TypeOrmModule.forFeature([Subscription, Organization, User]),
+    AuthModule,
+  ],
   controllers: [SubscriptionsController],
   providers: [SubscriptionsService],
 })

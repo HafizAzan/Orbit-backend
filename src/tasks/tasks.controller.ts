@@ -73,10 +73,7 @@ export class TasksController {
   }
 
   @Get(':taskId')
-  getTask(
-    @CurrentUser() user: JwtPayload,
-    @Param('taskId') taskId: string,
-  ) {
+  getTask(@CurrentUser() user: JwtPayload, @Param('taskId') taskId: string) {
     return this.tasksService.getTask(user, taskId);
   }
 
@@ -114,10 +111,7 @@ export class TasksController {
   }
 
   @Delete(':taskId')
-  deleteTask(
-    @CurrentUser() user: JwtPayload,
-    @Param('taskId') taskId: string,
-  ) {
+  deleteTask(@CurrentUser() user: JwtPayload, @Param('taskId') taskId: string) {
     return this.tasksService.deleteTask(user, taskId);
   }
 }

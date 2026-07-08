@@ -45,13 +45,19 @@ export class BillingController {
 
   @Post('checkout')
   @UseGuards(JwtAuthGuard, OrganizationBillingGuard)
-  createCheckout(@CurrentUser() user: JwtPayload, @Body() dto: CreateCheckoutDto) {
+  createCheckout(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateCheckoutDto,
+  ) {
     return this.billingService.createCheckout(user, dto);
   }
 
   @Post('checkout/confirm')
   @UseGuards(JwtAuthGuard, OrganizationBillingGuard)
-  confirmCheckout(@CurrentUser() user: JwtPayload, @Body() dto: ConfirmCheckoutDto) {
+  confirmCheckout(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ConfirmCheckoutDto,
+  ) {
     return this.billingService.confirmCheckout(user, dto.sessionId);
   }
 
@@ -75,7 +81,10 @@ export class BillingController {
 
   @Post('refund')
   @UseGuards(JwtAuthGuard, OrganizationBillingGuard)
-  refundPayment(@CurrentUser() user: JwtPayload, @Body() dto: RefundPaymentDto) {
+  refundPayment(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: RefundPaymentDto,
+  ) {
     return this.billingService.refundPayment(user, dto);
   }
 

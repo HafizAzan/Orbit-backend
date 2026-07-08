@@ -43,12 +43,13 @@ export class SubscriptionsService {
     query: PaginationQueryDto = {},
   ): Promise<PaginatedResponse<SubscriptionResponse>> {
     const { page, limit, skip, take } = resolvePagination(query);
-    const [subscriptions, total] = await this.subscriptionRepository.findAndCount({
-      relations: { organization: true },
-      order: { createdAt: 'DESC' },
-      skip,
-      take,
-    });
+    const [subscriptions, total] =
+      await this.subscriptionRepository.findAndCount({
+        relations: { organization: true },
+        order: { createdAt: 'DESC' },
+        skip,
+        take,
+      });
 
     const responses: SubscriptionResponse[] = [];
 

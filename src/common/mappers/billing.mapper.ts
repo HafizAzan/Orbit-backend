@@ -78,7 +78,9 @@ export type PlanDistributionItem = {
 
 function toIsoDate(value: Date | string | null | undefined) {
   if (!value) return null;
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  return value instanceof Date
+    ? value.toISOString()
+    : new Date(value).toISOString();
 }
 
 function toDateOnly(value: Date | string | null | undefined) {
@@ -106,7 +108,9 @@ export function mapSubscriptionResponse(
     startedAt: subscription.startedAt.toISOString(),
     expiresAt: resolveSubscriptionExpiresAt(subscription),
     cancelledAt: toIsoDate(subscription.cancelledAt),
-    trialEndsAt: toIsoDate(subscription.trialEndsAt) ?? resolveSubscriptionExpiresAt(subscription),
+    trialEndsAt:
+      toIsoDate(subscription.trialEndsAt) ??
+      resolveSubscriptionExpiresAt(subscription),
     createdAt: subscription.createdAt.toISOString(),
   };
 }

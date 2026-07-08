@@ -24,7 +24,10 @@ export function amountToCents(amount: number) {
   return Math.round(amount * 100);
 }
 
-export function getDefaultAmountCents(plan: PlanCode, billingCycle: BillingCycle) {
+export function getDefaultAmountCents(
+  plan: PlanCode,
+  billingCycle: BillingCycle,
+) {
   const monthlyAmount = PLAN_DEFAULT_AMOUNTS[plan];
 
   if (billingCycle === BillingCycle.ANNUAL) {
@@ -84,10 +87,7 @@ export function resolveSubscriptionExpiresAt(
     return null;
   }
 
-  const trialStart =
-    subscription.startedAt ??
-    subscription.createdAt ??
-    null;
+  const trialStart = subscription.startedAt ?? subscription.createdAt ?? null;
 
   if (!trialStart) {
     return null;

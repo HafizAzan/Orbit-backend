@@ -1,5 +1,9 @@
 import Stripe from 'stripe';
-import type { StripePriceRecurringInterval, StripeProduct, StripeSubscriptionStatus } from '../stripe.types';
+import type {
+  StripePriceRecurringInterval,
+  StripeProduct,
+  StripeSubscriptionStatus,
+} from '../stripe.types';
 import { BillingCycle, PlanCode } from '../../enum/billing.enum';
 
 export function mapStripeIntervalToBillingCycle(
@@ -68,9 +72,7 @@ export function buildMetadataLimitFeatures(
   const maxResidents = metadata.max_residents;
   if (maxResidents) {
     features.push(
-      maxResidents === '1'
-        ? '1 resident'
-        : `Up to ${maxResidents} residents`,
+      maxResidents === '1' ? '1 resident' : `Up to ${maxResidents} residents`,
     );
   }
 
@@ -153,7 +155,10 @@ export function parseProductFeatures(
         const parsed = JSON.parse(rawFeatures) as unknown;
 
         if (Array.isArray(parsed)) {
-          return parsed.map(String).map((item) => item.trim()).filter(Boolean);
+          return parsed
+            .map(String)
+            .map((item) => item.trim())
+            .filter(Boolean);
         }
       } catch {
         // Fall back to delimiter parsing below.
@@ -292,8 +297,8 @@ export function toDateFromUnix(timestamp: number | null | undefined) {
   return new Date(timestamp * 1000);
 }
 
-export function getSubscriptionPeriodEnd(
-  stripeSubscription: { items: { data: Array<{ current_period_end?: number }> } },
-) {
+export function getSubscriptionPeriodEnd(stripeSubscription: {
+  items: { data: Array<{ current_period_end?: number }> };
+}) {
   return stripeSubscription.items.data[0]?.current_period_end ?? null;
 }

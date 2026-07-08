@@ -107,7 +107,12 @@ export class User {
   @Column({ name: 'two_factor_enabled', default: false })
   twoFactorEnabled: boolean;
 
-  @Column({ name: 'two_factor_secret', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'two_factor_secret',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   twoFactorSecret: string | null;
 
   @Column({

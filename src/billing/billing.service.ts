@@ -379,10 +379,7 @@ export class BillingService {
     };
   }
 
-  async createCustomerPortalSession(
-    user: JwtPayload,
-    returnUrl?: string,
-  ) {
+  async createCustomerPortalSession(user: JwtPayload, returnUrl?: string) {
     const { subscription } = await this.resolveOrganizationBillingContext(user);
 
     if (!subscription.stripeCustomerId) {
@@ -395,10 +392,11 @@ export class BillingService {
       'FRONTEND_URL',
       'http://localhost:5173',
     );
-    const session = await this.stripeService.client.billingPortal.sessions.create({
-      customer: subscription.stripeCustomerId,
-      return_url: returnUrl ?? `${frontendUrl}/billing`,
-    });
+    const session =
+      await this.stripeService.client.billingPortal.sessions.create({
+        customer: subscription.stripeCustomerId,
+        return_url: returnUrl ?? `${frontendUrl}/billing`,
+      });
 
     if (!session.url) {
       throw new BadRequestException('Unable to open billing portal.');
@@ -553,7 +551,9 @@ export class BillingService {
       mapStripeIntervalToBillingCycle(price.recurring?.interval) ??
       BillingCycle.MONTHLY;
     subscription.amountCents = 0;
-    subscription.currency = (price.currency ?? subscription.currency).toUpperCase();
+    subscription.currency = (
+      price.currency ?? subscription.currency
+    ).toUpperCase();
     subscription.startedAt = dates.startedAt;
     subscription.expiresAt = dates.expiresAt;
     subscription.trialEndsAt = dates.trialEndsAt;
@@ -570,7 +570,9 @@ export class BillingService {
   }
 
   private resolveCheckoutOrganizationId(session: StripeCheckoutSession) {
-    return session.metadata?.organizationId ?? session.client_reference_id ?? null;
+    return (
+      session.metadata?.organizationId ?? session.client_reference_id ?? null
+    );
   }
 
   private async handleCheckoutCompleted(session: StripeCheckoutSession) {

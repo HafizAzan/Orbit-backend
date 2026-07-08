@@ -9,7 +9,8 @@ export class PresenceService {
   private readonly orgConnections = new Map<string, Map<string, number>>();
 
   userConnected(organizationId: string, userId: string) {
-    const orgMap = this.orgConnections.get(organizationId) ?? new Map<string, number>();
+    const orgMap =
+      this.orgConnections.get(organizationId) ?? new Map<string, number>();
     orgMap.set(userId, (orgMap.get(userId) ?? 0) + 1);
     this.orgConnections.set(organizationId, orgMap);
   }

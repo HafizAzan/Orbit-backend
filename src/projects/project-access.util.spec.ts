@@ -52,14 +52,22 @@ describe('canDeleteProject', () => {
   const createdById = 'creator-1';
 
   it('allows owner to delete any project', () => {
-    expect(canDeleteProject(actor(RegisterAs.OWNER), null, createdById)).toBe(true);
-    expect(canDeleteProject(actor(RegisterAs.OWNER), membership(ProjectMemberRole.MEMBER), createdById)).toBe(
+    expect(canDeleteProject(actor(RegisterAs.OWNER), null, createdById)).toBe(
       true,
     );
+    expect(
+      canDeleteProject(
+        actor(RegisterAs.OWNER),
+        membership(ProjectMemberRole.MEMBER),
+        createdById,
+      ),
+    ).toBe(true);
   });
 
   it('allows admin to delete any project', () => {
-    expect(canDeleteProject(actor(RegisterAs.ADMIN), null, createdById)).toBe(true);
+    expect(canDeleteProject(actor(RegisterAs.ADMIN), null, createdById)).toBe(
+      true,
+    );
   });
 
   describe('manager role', () => {
@@ -94,7 +102,13 @@ describe('canDeleteProject', () => {
     });
 
     it('denies delete when manager has no project membership', () => {
-      expect(canDeleteProject(actor(RegisterAs.MANAGER, 'manager-2'), null, createdById)).toBe(false);
+      expect(
+        canDeleteProject(
+          actor(RegisterAs.MANAGER, 'manager-2'),
+          null,
+          createdById,
+        ),
+      ).toBe(false);
     });
   });
 

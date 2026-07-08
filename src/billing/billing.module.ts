@@ -4,7 +4,10 @@ import { AuthModule } from '../auth/auth.module';
 import { Organization } from '../entities/organization.entity';
 import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
-import { BillingController, BillingWebhookController } from './billing.controller';
+import {
+  BillingController,
+  BillingWebhookController,
+} from './billing.controller';
 import { BillingService } from './billing.service';
 import { StripeService } from './stripe.service';
 

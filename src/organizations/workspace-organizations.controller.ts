@@ -96,7 +96,11 @@ export class WorkspaceOrganizationsController {
     @Param('memberId') memberId: string,
     @Body() dto: UpdateOrganizationMemberEmailDto,
   ) {
-    return this.organizationsService.updateMemberEmail(user, memberId, dto.email);
+    return this.organizationsService.updateMemberEmail(
+      user,
+      memberId,
+      dto.email,
+    );
   }
 
   @Delete('me/members/:memberId')

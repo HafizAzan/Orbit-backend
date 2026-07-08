@@ -7,14 +7,15 @@ export type OrganizationWorkspaceSettings = {
   sessionTimeoutMinutes: number;
 };
 
-export const DEFAULT_ORGANIZATION_WORKSPACE_SETTINGS: OrganizationWorkspaceSettings = {
-  dailyDigest: true,
-  realtimePush: false,
-  weeklyReport: true,
-  twoFactorRequired: true,
-  sessionTimeoutEnabled: true,
-  sessionTimeoutMinutes: 30,
-};
+export const DEFAULT_ORGANIZATION_WORKSPACE_SETTINGS: OrganizationWorkspaceSettings =
+  {
+    dailyDigest: true,
+    realtimePush: false,
+    weeklyReport: true,
+    twoFactorRequired: true,
+    sessionTimeoutEnabled: true,
+    sessionTimeoutMinutes: 30,
+  };
 
 export function mergeOrganizationWorkspaceSettings(
   current: OrganizationWorkspaceSettings | null | undefined,

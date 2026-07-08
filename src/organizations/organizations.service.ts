@@ -104,12 +104,13 @@ export class OrganizationsService {
     query: PaginationQueryDto = {},
   ): Promise<PaginatedResponse<OrganizationResponse>> {
     const { page, limit, skip, take } = resolvePagination(query);
-    const [organizations, total] = await this.organizationRepository.findAndCount({
-      relations: { subscription: true, users: true },
-      order: { createdAt: 'DESC' },
-      skip,
-      take,
-    });
+    const [organizations, total] =
+      await this.organizationRepository.findAndCount({
+        relations: { subscription: true, users: true },
+        order: { createdAt: 'DESC' },
+        skip,
+        take,
+      });
 
     return buildPaginatedResponse(
       organizations.map((organization) =>
@@ -151,7 +152,9 @@ export class OrganizationsService {
   }
 
   async create(dto: CreateOrganizationDto): Promise<OrganizationResponse> {
-    const slug = await this.resolveUniqueSlug(dto.slug ?? slugifyOrganizationName(dto.name));
+    const slug = await this.resolveUniqueSlug(
+      dto.slug ?? slugifyOrganizationName(dto.name),
+    );
     const ownerEmail = dto.ownerEmail.trim().toLowerCase();
 
     await this.ensureOwnerEmailAvailable(ownerEmail);
@@ -195,7 +198,10 @@ export class OrganizationsService {
     return mapOrganizationResponse(organization, 1, owner);
   }
 
-  async update(id: string, dto: UpdateOrganizationDto): Promise<OrganizationResponse> {
+  async update(
+    id: string,
+    dto: UpdateOrganizationDto,
+  ): Promise<OrganizationResponse> {
     const organization = await this.getOrganizationWithRelations(id);
 
     if (dto.slug && dto.slug !== organization.slug) {
@@ -261,7 +267,9 @@ export class OrganizationsService {
   async getCurrentOrganization(
     user: JwtPayload,
   ): Promise<WorkspaceOrganizationResponse> {
-    const organization = await this.getOrganizationForUser(user.organizationId!);
+    const organization = await this.getOrganizationForUser(
+      user.organizationId!,
+    );
     const usersCount = organization.users?.length ?? 0;
 
     return mapWorkspaceOrganizationResponse(organization, usersCount);
@@ -271,10 +279,15 @@ export class OrganizationsService {
     user: JwtPayload,
     dto: UpdateWorkspaceOrganizationDto,
   ): Promise<WorkspaceOrganizationResponse> {
-    const organization = await this.getOrganizationForUser(user.organizationId!);
+    const organization = await this.getOrganizationForUser(
+      user.organizationId!,
+    );
 
     if (dto.slug && dto.slug !== organization.slug) {
-      organization.slug = await this.resolveUniqueSlug(dto.slug, organization.id);
+      organization.slug = await this.resolveUniqueSlug(
+        dto.slug,
+        organization.id,
+      );
     }
 
     if (dto.name) {
@@ -318,7 +331,9 @@ export class OrganizationsService {
   }
 
   async getOrganizationTwoFactorStatus(user: JwtPayload) {
-    const organization = await this.getOrganizationForUser(user.organizationId!);
+    const organization = await this.getOrganizationForUser(
+      user.organizationId!,
+    );
 
     return {
       configured: organization.twoFactorConfigured,
@@ -331,7 +346,9 @@ export class OrganizationsService {
   }
 
   async setupOrganizationTwoFactor(user: JwtPayload) {
-    const organization = await this.getOrganizationForUser(user.organizationId!);
+    const organization = await this.getOrganizationForUser(
+      user.organizationId!,
+    );
     const secret = generateTwoFactorSecret();
 
     organization.twoFactorSecret = secret;
@@ -348,7 +365,9 @@ export class OrganizationsService {
   }
 
   async confirmOrganizationTwoFactor(user: JwtPayload, code: string) {
-    const organization = await this.getOrganizationForUser(user.organizationId!);
+    const organization = await this.getOrganizationForUser(
+      user.organizationId!,
+    );
 
     if (!organization.twoFactorSecret) {
       throw new BadRequestException(
@@ -373,7 +392,9 @@ export class OrganizationsService {
     user: JwtPayload,
     query: ListMembersQueryDto = {},
   ): Promise<OrganizationMembersSummaryResponse> {
-    const organization = await this.getOrganizationForUser(user.organizationId!);
+    const organization = await this.getOrganizationForUser(
+      user.organizationId!,
+    );
     let members = [...(organization.users ?? [])];
 
     if (!hasOrgWideProjectAccess(user.role)) {
@@ -391,14 +412,18 @@ export class OrganizationsService {
     return mapOrganizationMembersSummary(members, planCode, query);
   }
 
-  async getOrganizationAbout(user: JwtPayload): Promise<OrganizationAboutResponse> {
+  async getOrganizationAbout(
+    user: JwtPayload,
+  ): Promise<OrganizationAboutResponse> {
     if (user.role !== RegisterAs.MANAGER && user.role !== RegisterAs.MEMBER) {
       throw new ForbiddenException(
         'Organization overview is only available for managers and members.',
       );
     }
 
-    const organization = await this.getOrganizationForUser(user.organizationId!);
+    const organization = await this.getOrganizationForUser(
+      user.organizationId!,
+    );
     const members = organization.users ?? [];
 
     const owner = members.find(
@@ -462,14 +487,19 @@ export class OrganizationsService {
   ): Promise<OrganizationMemberResponse> {
     this.ensureAssignableRole(role);
 
-    const member = await this.getOrganizationMember(actor.organizationId!, memberId);
+    const member = await this.getOrganizationMember(
+      actor.organizationId!,
+      memberId,
+    );
 
     if (member.id === actor.sub) {
       throw new BadRequestException('You cannot change your own role.');
     }
 
     if (member.role === RegisterAs.OWNER) {
-      throw new ForbiddenException('The organization owner role cannot be changed.');
+      throw new ForbiddenException(
+        'The organization owner role cannot be changed.',
+      );
     }
 
     member.role = role;
@@ -493,19 +523,26 @@ export class OrganizationsService {
     memberId: string,
     email: string,
   ): Promise<OrganizationMemberResponse> {
-    const member = await this.getOrganizationMember(actor.organizationId!, memberId);
+    const member = await this.getOrganizationMember(
+      actor.organizationId!,
+      memberId,
+    );
 
     if (member.id === actor.sub) {
-      throw new BadRequestException('You cannot change your own email from member settings.');
+      throw new BadRequestException(
+        'You cannot change your own email from member settings.',
+      );
     }
 
     if (member.role === RegisterAs.OWNER) {
-      throw new ForbiddenException('The organization owner email cannot be changed here.');
+      throw new ForbiddenException(
+        'The organization owner email cannot be changed here.',
+      );
     }
 
     if (!canActorChangeMemberEmail(actor.role, member.role)) {
       throw new ForbiddenException(
-        'You do not have permission to change this member\'s email.',
+        "You do not have permission to change this member's email.",
       );
     }
 
@@ -543,10 +580,15 @@ export class OrganizationsService {
   }
 
   async removeMember(actor: JwtPayload, memberId: string) {
-    const member = await this.getOrganizationMember(actor.organizationId!, memberId);
+    const member = await this.getOrganizationMember(
+      actor.organizationId!,
+      memberId,
+    );
 
     if (member.id === actor.sub) {
-      throw new BadRequestException('You cannot remove yourself from the organization.');
+      throw new BadRequestException(
+        'You cannot remove yourself from the organization.',
+      );
     }
 
     if (member.role === RegisterAs.OWNER) {
@@ -645,7 +687,10 @@ export class OrganizationsService {
     return organization;
   }
 
-  private async getOrganizationMember(organizationId: string, memberId: string) {
+  private async getOrganizationMember(
+    organizationId: string,
+    memberId: string,
+  ) {
     const member = await this.userRepository.findOne({
       where: { id: memberId, organizationId },
     });

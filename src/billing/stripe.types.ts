@@ -23,7 +23,9 @@ export type StripeSubscription = Awaited<
 >['data'][number];
 
 export type StripePriceRecurringInterval = NonNullable<
-  Awaited<ReturnType<StripeClient['prices']['list']>>['data'][number]['recurring']
+  Awaited<
+    ReturnType<StripeClient['prices']['list']>
+  >['data'][number]['recurring']
 >['interval'];
 
 export type StripeSubscriptionStatus = StripeSubscription['status'];

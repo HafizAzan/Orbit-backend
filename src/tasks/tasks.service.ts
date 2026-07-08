@@ -28,9 +28,7 @@ import { TaskPriority, TaskStatus } from '../enum/task.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { ProjectsService } from '../projects/projects.service';
 import { ActivityService } from '../activity/activity.service';
-import {
-  DashboardPeriod,
-} from './dto/dashboard-query.dto';
+import { DashboardPeriod } from './dto/dashboard-query.dto';
 import {
   getDashboardPeriodRange,
   isProjectRelevantInPeriod,
@@ -210,7 +208,9 @@ export class TasksService {
         );
       }
     } else if (!canModifyTask(user, task)) {
-      throw new ForbiddenException('You do not have permission to edit this task.');
+      throw new ForbiddenException(
+        'You do not have permission to edit this task.',
+      );
     }
 
     const previousStatus = task.status;
@@ -260,7 +260,9 @@ export class TasksService {
 
     await this.activityService.recordForUser(user, {
       module: ActivityModule.TASKS,
-      action: statusChanged ? ActivityAction.STATUS_CHANGED : ActivityAction.UPDATED,
+      action: statusChanged
+        ? ActivityAction.STATUS_CHANGED
+        : ActivityAction.UPDATED,
       summary: statusChanged
         ? `Changed status of ${task.title}`
         : `Updated task ${task.title}`,
@@ -318,7 +320,9 @@ export class TasksService {
     }
 
     if (!canModifyTask(user, task)) {
-      throw new ForbiddenException('You do not have permission to edit this task.');
+      throw new ForbiddenException(
+        'You do not have permission to edit this task.',
+      );
     }
 
     const storageKey = buildTaskAttachmentStorageKey(taskId, file.filename);
@@ -348,7 +352,9 @@ export class TasksService {
     }
 
     if (!canModifyTask(user, task)) {
-      throw new ForbiddenException('You do not have permission to edit this task.');
+      throw new ForbiddenException(
+        'You do not have permission to edit this task.',
+      );
     }
 
     const attachment = await this.taskAttachmentRepository.findOne({
@@ -377,7 +383,9 @@ export class TasksService {
     }
 
     if (!canDeleteAnyTask(user) && !canModifyTask(user, task)) {
-      throw new ForbiddenException('You do not have permission to delete this task.');
+      throw new ForbiddenException(
+        'You do not have permission to delete this task.',
+      );
     }
 
     const projectId = task.projectId;
@@ -420,14 +428,20 @@ export class TasksService {
       this.projectsService.getSquadUserIds(user),
     ]);
 
-    const periodTasks = tasks.filter((task) => isTaskRelevantInPeriod(task, range));
+    const periodTasks = tasks.filter((task) =>
+      isTaskRelevantInPeriod(task, range),
+    );
     const periodProjectIds = new Set(periodTasks.map((task) => task.projectId));
     const periodProjects = projects.filter((project) =>
       isProjectRelevantInPeriod(project, range, periodProjectIds),
     );
 
-    const activeTasks = periodTasks.filter((task) => task.status !== TaskStatus.DONE);
-    const completedTasks = periodTasks.filter((task) => task.status === TaskStatus.DONE);
+    const activeTasks = periodTasks.filter(
+      (task) => task.status !== TaskStatus.DONE,
+    );
+    const completedTasks = periodTasks.filter(
+      (task) => task.status === TaskStatus.DONE,
+    );
 
     const isOwnerDashboard = user.role === RegisterAs.OWNER;
     const memberCount = isOwnerDashboard
@@ -439,7 +453,10 @@ export class TasksService {
         id: 'total-projects',
         label: 'Total Projects',
         value: String(periodProjects.length),
-        trend: periodProjects.length > 0 ? 'In this period' : 'No projects in period',
+        trend:
+          periodProjects.length > 0
+            ? 'In this period'
+            : 'No projects in period',
         trendType: 'stable' as const,
         icon: 'projects' as const,
         iconBg: 'bg-indigo-50',
@@ -487,7 +504,9 @@ export class TasksService {
     }));
     const criticalDeadlines = periodTasks
       .filter((task) => task.dueDate && task.status !== TaskStatus.DONE)
-      .sort((left, right) => (left.dueDate ?? '').localeCompare(right.dueDate ?? ''))
+      .sort((left, right) =>
+        (left.dueDate ?? '').localeCompare(right.dueDate ?? ''),
+      )
       .slice(0, 5)
       .map((task) => {
         const due = new Date(task.dueDate!);
@@ -498,7 +517,8 @@ export class TasksService {
           month: due.toLocaleString('en-US', { month: 'short' }).toUpperCase(),
           day: String(due.getDate()),
           priority:
-            task.priority === TaskPriority.CRITICAL || task.priority === TaskPriority.HIGH
+            task.priority === TaskPriority.CRITICAL ||
+            task.priority === TaskPriority.HIGH
               ? ('high' as const)
               : undefined,
         };
@@ -522,7 +542,9 @@ export class TasksService {
       this.findAccessibleTasks(user),
     ]);
 
-    const completedTasks = tasks.filter((task) => task.status === TaskStatus.DONE);
+    const completedTasks = tasks.filter(
+      (task) => task.status === TaskStatus.DONE,
+    );
     const overdueTasks = tasks.filter(
       (task) =>
         task.dueDate &&
@@ -531,13 +553,19 @@ export class TasksService {
     );
 
     const tasksByProject = projects.map((project) => {
-      const projectTasks = tasks.filter((task) => task.projectId === project.id);
+      const projectTasks = tasks.filter(
+        (task) => task.projectId === project.id,
+      );
       return {
         projectId: project.id,
         projectName: project.name,
         total: projectTasks.length,
-        completed: projectTasks.filter((task) => task.status === TaskStatus.DONE).length,
-        inProgress: projectTasks.filter((task) => task.status === TaskStatus.IN_PROGRESS).length,
+        completed: projectTasks.filter(
+          (task) => task.status === TaskStatus.DONE,
+        ).length,
+        inProgress: projectTasks.filter(
+          (task) => task.status === TaskStatus.IN_PROGRESS,
+        ).length,
       };
     });
 
@@ -566,7 +594,9 @@ export class TasksService {
     const tasks = await this.findAccessibleTasks(user);
 
     return projects.map((project) => {
-      const projectTasks = tasks.filter((task) => task.projectId === project.id);
+      const projectTasks = tasks.filter(
+        (task) => task.projectId === project.id,
+      );
       const members = (project.members ?? [])
         .filter((membership) => membership.user)
         .map(mapMemberSummary);
@@ -585,8 +615,13 @@ export class TasksService {
   }
 
   async getBoard(user: JwtPayload, projectId: string) {
-    const project = await this.projectsService.ensureAccessibleProject(user, projectId);
-    const tasks = await this.findAccessibleTasks(user, { projectId: project.id });
+    const project = await this.projectsService.ensureAccessibleProject(
+      user,
+      projectId,
+    );
+    const tasks = await this.findAccessibleTasks(user, {
+      projectId: project.id,
+    });
     const members = (project.members ?? [])
       .filter((membership) => membership.user)
       .map(mapMemberSummary);
@@ -599,7 +634,10 @@ export class TasksService {
       teamMembers: members.map((member) => ({
         id: member.id,
         name: member.name,
-        role: member.projectRole === ProjectMemberRole.ADMIN ? 'Project Lead' : 'Team Member',
+        role:
+          member.projectRole === ProjectMemberRole.ADMIN
+            ? 'Project Lead'
+            : 'Team Member',
         avatarColor: member.avatarColor,
       })),
       columns: KANBAN_COLUMNS.map((column) => ({
@@ -621,7 +659,8 @@ export class TasksService {
       take: number;
     },
   ): Promise<[Task[], number]> {
-    const projectIds = await this.projectsService.resolveAccessibleProjectIds(user);
+    const projectIds =
+      await this.projectsService.resolveAccessibleProjectIds(user);
 
     if (projectIds.length === 0) {
       return [[], 0];
@@ -653,7 +692,9 @@ export class TasksService {
       .take(options.take);
 
     if (options.assigneeOnly || !canViewAllOrganizationTasks(user.role)) {
-      query.andWhere('task.assignee_id = :assigneeId', { assigneeId: user.sub });
+      query.andWhere('task.assignee_id = :assigneeId', {
+        assigneeId: user.sub,
+      });
     }
 
     return query.getManyAndCount();
@@ -663,7 +704,8 @@ export class TasksService {
     user: JwtPayload,
     options: { assigneeOnly?: boolean; projectId?: string } = {},
   ) {
-    const projectIds = await this.projectsService.resolveAccessibleProjectIds(user);
+    const projectIds =
+      await this.projectsService.resolveAccessibleProjectIds(user);
 
     if (projectIds.length === 0) {
       return [];
@@ -693,14 +735,17 @@ export class TasksService {
       .orderBy('task.updated_at', 'DESC');
 
     if (options.assigneeOnly || !canViewAllOrganizationTasks(user.role)) {
-      query.andWhere('task.assignee_id = :assigneeId', { assigneeId: user.sub });
+      query.andWhere('task.assignee_id = :assigneeId', {
+        assigneeId: user.sub,
+      });
     }
 
     return query.getMany();
   }
 
   private async findAccessibleProjects(user: JwtPayload) {
-    const projectIds = await this.projectsService.resolveAccessibleProjectIds(user);
+    const projectIds =
+      await this.projectsService.resolveAccessibleProjectIds(user);
 
     if (projectIds.length === 0) {
       return [];
@@ -737,7 +782,10 @@ export class TasksService {
       forWrite,
     );
 
-    if (!canViewAllOrganizationTasks(user.role) && task.assigneeId !== user.sub) {
+    if (
+      !canViewAllOrganizationTasks(user.role) &&
+      task.assigneeId !== user.sub
+    ) {
       throw new ForbiddenException('You do not have access to this task.');
     }
 
@@ -766,7 +814,9 @@ export class TasksService {
     ]);
 
     if (!allowedIds.has(assigneeId)) {
-      throw new BadRequestException('Assignee must belong to your project squad.');
+      throw new BadRequestException(
+        'Assignee must belong to your project squad.',
+      );
     }
 
     const assignee = await this.userRepository.findOne({
@@ -778,7 +828,9 @@ export class TasksService {
     });
 
     if (!assignee) {
-      throw new BadRequestException('Assignee is not an active workspace member.');
+      throw new BadRequestException(
+        'Assignee is not an active workspace member.',
+      );
     }
   }
 
@@ -824,12 +876,18 @@ export class TasksService {
     });
   }
 
-  private getVelocityBuckets(range: DashboardDateRange, period: DashboardPeriod) {
+  private getVelocityBuckets(
+    range: DashboardDateRange,
+    period: DashboardPeriod,
+  ) {
     if (period === DashboardPeriod.TODAY) {
       return [{ from: range.from, to: range.to, label: 'Today' }];
     }
 
-    if (period === DashboardPeriod.LAST_6_MONTHS || period === DashboardPeriod.THIS_YEAR) {
+    if (
+      period === DashboardPeriod.LAST_6_MONTHS ||
+      period === DashboardPeriod.THIS_YEAR
+    ) {
       const buckets: { from: Date; to: Date; label: string }[] = [];
       const cursor = new Date(range.from);
       cursor.setDate(1);
@@ -837,7 +895,15 @@ export class TasksService {
 
       while (cursor <= range.to) {
         const bucketStart = new Date(cursor);
-        const bucketEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59, 999);
+        const bucketEnd = new Date(
+          cursor.getFullYear(),
+          cursor.getMonth() + 1,
+          0,
+          23,
+          59,
+          59,
+          999,
+        );
         const cappedEnd = bucketEnd > range.to ? range.to : bucketEnd;
 
         buckets.push({
@@ -866,7 +932,10 @@ export class TasksService {
         to: bucketEnd,
         label:
           period === DashboardPeriod.THIS_MONTH
-            ? String(bucketStart.getDate())
+            ? bucketStart.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+              })
             : bucketStart.toLocaleDateString('en-US', { weekday: 'short' }),
       });
 

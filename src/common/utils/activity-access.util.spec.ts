@@ -27,19 +27,31 @@ describe('canDeleteActivity', () => {
 
   it('allows admin to delete admin, manager, and member activity', () => {
     expect(
-      canDeleteActivity(actor(RegisterAs.ADMIN), event({ actorRole: RegisterAs.ADMIN })),
+      canDeleteActivity(
+        actor(RegisterAs.ADMIN),
+        event({ actorRole: RegisterAs.ADMIN }),
+      ),
     ).toBe(true);
     expect(
-      canDeleteActivity(actor(RegisterAs.ADMIN), event({ actorRole: RegisterAs.MANAGER })),
+      canDeleteActivity(
+        actor(RegisterAs.ADMIN),
+        event({ actorRole: RegisterAs.MANAGER }),
+      ),
     ).toBe(true);
     expect(
-      canDeleteActivity(actor(RegisterAs.ADMIN), event({ actorRole: RegisterAs.MEMBER })),
+      canDeleteActivity(
+        actor(RegisterAs.ADMIN),
+        event({ actorRole: RegisterAs.MEMBER }),
+      ),
     ).toBe(true);
   });
 
   it('denies admin from deleting owner activity', () => {
     expect(
-      canDeleteActivity(actor(RegisterAs.ADMIN), event({ actorRole: RegisterAs.OWNER })),
+      canDeleteActivity(
+        actor(RegisterAs.ADMIN),
+        event({ actorRole: RegisterAs.OWNER }),
+      ),
     ).toBe(false);
   });
 

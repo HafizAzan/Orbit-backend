@@ -32,7 +32,8 @@ export function mapCalendarEventRecord(
 
 export function mapTaskToCalendarEvent(task: Task): CalendarEventResponse {
   const isDeadline =
-    task.priority === TaskPriority.CRITICAL || task.priority === TaskPriority.HIGH;
+    task.priority === TaskPriority.CRITICAL ||
+    task.priority === TaskPriority.HIGH;
 
   return {
     id: `task-${task.id}`,

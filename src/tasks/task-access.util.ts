@@ -32,7 +32,9 @@ export function canMemberUpdateTaskStatus(user: JwtPayload, task: Task) {
   return user.role === RegisterAs.MEMBER && task.assigneeId === user.sub;
 }
 
-export function getMemberTaskUpdateViolation(dto: UpdateTaskDto): string | null {
+export function getMemberTaskUpdateViolation(
+  dto: UpdateTaskDto,
+): string | null {
   if (
     dto.title !== undefined ||
     dto.description !== undefined ||

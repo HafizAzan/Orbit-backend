@@ -363,9 +363,7 @@ export class AuthService {
       organization.id,
     );
 
-    if (
-      this.isOrganizationTwoFactorEnforced(workspaceSettings, organization)
-    ) {
+    if (this.isOrganizationTwoFactorEnforced(workspaceSettings, organization)) {
       return {
         message: `${organization.name} created successfully. Two-factor authentication required.`,
         ...this.buildTwoFactorChallengeResponse(user, false),
@@ -1103,9 +1101,7 @@ export class AuthService {
       organization.id,
     );
 
-    if (
-      this.isOrganizationTwoFactorEnforced(workspaceSettings, organization)
-    ) {
+    if (this.isOrganizationTwoFactorEnforced(workspaceSettings, organization)) {
       return {
         message: `Welcome to ${organization.name}, ${fullName}. Two-factor authentication required.`,
         ...this.buildTwoFactorChallengeResponse(member, false),

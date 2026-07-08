@@ -71,7 +71,12 @@ export class Subscription {
   @Column({ name: 'cancelled_at', type: 'timestamptz', nullable: true })
   cancelledAt: Date | null;
 
-  @Column({ name: 'stripe_customer_id', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'stripe_customer_id',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   stripeCustomerId: string | null;
 
   @Column({
@@ -82,7 +87,12 @@ export class Subscription {
   })
   stripeSubscriptionId: string | null;
 
-  @Column({ name: 'stripe_price_id', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'stripe_price_id',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   stripePriceId: string | null;
 
   @Column({ name: 'last_payment_at', type: 'timestamptz', nullable: true })

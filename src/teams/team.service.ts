@@ -109,7 +109,10 @@ export class TeamService {
     actor: JwtPayload,
     memberId: string,
   ): Promise<TeamMemberDetailResponse> {
-    const member = await this.getOrganizationMember(actor.organizationId!, memberId);
+    const member = await this.getOrganizationMember(
+      actor.organizationId!,
+      memberId,
+    );
     await this.ensureMemberVisibleToActor(actor, member);
 
     const [baseMember, projectsDetail] = await Promise.all([
@@ -142,7 +145,9 @@ export class TeamService {
     const squadIds = await this.projectsService.getSquadUserIds(actor);
 
     if (!squadIds.has(member.id)) {
-      throw new ForbiddenException('You do not have access to this team member.');
+      throw new ForbiddenException(
+        'You do not have access to this team member.',
+      );
     }
   }
 
@@ -212,9 +217,12 @@ export class TeamService {
     ).length;
 
     const memberIds = new Set(members.map((member) => member.id));
-    const onlineUserIds =
-      this.presenceService.getOrgPresence(user.organizationId!).onlineUserIds;
-    const onlineNow = onlineUserIds.filter((userId) => memberIds.has(userId)).length;
+    const onlineUserIds = this.presenceService.getOrgPresence(
+      user.organizationId!,
+    ).onlineUserIds;
+    const onlineNow = onlineUserIds.filter((userId) =>
+      memberIds.has(userId),
+    ).length;
 
     return {
       totalSeats: {

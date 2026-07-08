@@ -9,10 +9,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import {
-  OrganizationStatus,
-  PlanCode,
-} from '../../enum/billing.enum';
+import { OrganizationStatus, PlanCode } from '../../enum/billing.enum';
 
 export class CreateOrganizationDto {
   @IsString()

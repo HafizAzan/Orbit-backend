@@ -117,7 +117,9 @@ export const PROJECT_THEME_META: Record<ProjectTheme, ProjectThemeMeta> = {
   },
 };
 
-export function getProjectThemeMeta(theme: ProjectTheme | string): ProjectThemeMeta {
+export function getProjectThemeMeta(
+  theme: ProjectTheme | string,
+): ProjectThemeMeta {
   return PROJECT_THEME_META[normalizeProjectTheme(theme)];
 }
 

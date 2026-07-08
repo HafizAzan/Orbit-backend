@@ -5,7 +5,10 @@ import {
   EmailVerificationStatus,
   RegisterAs,
 } from '../../enum/auth.enum';
-import { mapOrganizationResponse, type OrganizationResponse } from './billing.mapper';
+import {
+  mapOrganizationResponse,
+  type OrganizationResponse,
+} from './billing.mapper';
 import {
   DEFAULT_ORGANIZATION_WORKSPACE_SETTINGS,
   type OrganizationWorkspaceSettings,
@@ -74,7 +77,9 @@ const WORKSPACE_SEAT_LIMITS: Record<string, number> = {
   ENTERPRISE: 1000,
 };
 
-export function mapOrganizationMemberResponse(user: User): OrganizationMemberResponse {
+export function mapOrganizationMemberResponse(
+  user: User,
+): OrganizationMemberResponse {
   return {
     id: user.id,
     fullName: user.fullName,

@@ -42,8 +42,8 @@ describe('member task access', () => {
   });
 
   it('rejects status updates for unassigned tasks', () => {
-    expect(canMemberUpdateTaskStatus(memberUser(), assignedTask('other-user'))).toBe(
-      false,
-    );
+    expect(
+      canMemberUpdateTaskStatus(memberUser(), assignedTask('other-user')),
+    ).toBe(false);
   });
 });

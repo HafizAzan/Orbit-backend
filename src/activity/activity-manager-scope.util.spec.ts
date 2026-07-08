@@ -1,4 +1,7 @@
-import { ActivityModule, MANAGER_ACTIVITY_MODULES } from '../enum/activity.enum';
+import {
+  ActivityModule,
+  MANAGER_ACTIVITY_MODULES,
+} from '../enum/activity.enum';
 
 describe('manager activity scope', () => {
   it('limits manager-visible modules to tasks, projects, and teams', () => {

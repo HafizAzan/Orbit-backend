@@ -158,7 +158,10 @@ export class ProjectsService {
   async createProject(user: JwtPayload, dto: CreateProjectDto) {
     const organizationId = user.organizationId!;
 
-    await this.ensureUniqueProjectKey(organizationId, dto.key.trim().toUpperCase());
+    await this.ensureUniqueProjectKey(
+      organizationId,
+      dto.key.trim().toUpperCase(),
+    );
 
     const leadUserId = await this.resolveProjectLeadUserId(
       user,
@@ -220,12 +223,18 @@ export class ProjectsService {
     return this.getProject(user, project.id);
   }
 
-  async updateProject(user: JwtPayload, projectId: string, dto: UpdateProjectDto) {
+  async updateProject(
+    user: JwtPayload,
+    projectId: string,
+    dto: UpdateProjectDto,
+  ) {
     const project = await this.getAccessibleProject(user, projectId, true);
     const membership = this.findMembership(project.members ?? [], user.sub);
 
     if (!canEditProject(user, membership)) {
-      throw new ForbiddenException('You do not have permission to edit this project.');
+      throw new ForbiddenException(
+        'You do not have permission to edit this project.',
+      );
     }
 
     if (dto.key && dto.key.trim().toUpperCase() !== project.key) {
@@ -238,7 +247,8 @@ export class ProjectsService {
     }
 
     if (dto.name) project.name = dto.name.trim();
-    if (dto.description !== undefined) project.description = dto.description.trim();
+    if (dto.description !== undefined)
+      project.description = dto.description.trim();
     if (dto.category) project.category = dto.category;
     if (dto.priority) project.priority = dto.priority;
     if (dto.status !== undefined && dto.status !== project.status) {
@@ -251,7 +261,9 @@ export class ProjectsService {
 
     if (dto.leadUserId !== undefined && hasOrgWideProjectAccess(user.role)) {
       if (!canManageProjectMembership(user, membership)) {
-        throw new ForbiddenException('You do not have permission to change the project lead.');
+        throw new ForbiddenException(
+          'You do not have permission to change the project lead.',
+        );
       }
 
       project.leadUserId = await this.resolveProjectLeadUserId(
@@ -265,7 +277,9 @@ export class ProjectsService {
 
     if (dto.memberIds) {
       if (!canManageProjectMembership(user, membership)) {
-        throw new ForbiddenException('You do not have permission to manage project members.');
+        throw new ForbiddenException(
+          'You do not have permission to manage project members.',
+        );
       }
 
       const leadUserId = project.leadUserId ?? user.sub;
@@ -291,9 +305,14 @@ export class ProjectsService {
         actorName,
         memberUserIds: addedMemberIds,
       });
-    } else if (dto.leadUserId !== undefined && hasOrgWideProjectAccess(user.role)) {
+    } else if (
+      dto.leadUserId !== undefined &&
+      hasOrgWideProjectAccess(user.role)
+    ) {
       const leadUserId = project.leadUserId ?? user.sub;
-      const currentMemberIds = (project.members ?? []).map((entry) => entry.userId);
+      const currentMemberIds = (project.members ?? []).map(
+        (entry) => entry.userId,
+      );
       const memberIds = await this.resolveProjectMemberIds(
         project.organizationId,
         leadUserId,
@@ -311,7 +330,9 @@ export class ProjectsService {
     const membership = this.findMembership(project.members ?? [], user.sub);
 
     if (!canDeleteProject(user, membership, project.createdById)) {
-      throw new ForbiddenException('You do not have permission to delete this project.');
+      throw new ForbiddenException(
+        'You do not have permission to delete this project.',
+      );
     }
 
     await this.projectMemberRepository.delete({ projectId: project.id });
@@ -380,7 +401,9 @@ export class ProjectsService {
       select: { userId: true },
     });
 
-    const squadIds = new Set(memberships.map((membership) => membership.userId));
+    const squadIds = new Set(
+      memberships.map((membership) => membership.userId),
+    );
     squadIds.add(user.sub);
 
     return squadIds;
@@ -417,10 +440,7 @@ export class ProjectsService {
     return counts;
   }
 
-  async countProjectMembershipsForUser(
-    organizationId: string,
-    userId: string,
-  ) {
+  async countProjectMembershipsForUser(organizationId: string, userId: string) {
     const counts = await this.countProjectMembershipsByUserIds(organizationId, [
       userId,
     ]);
@@ -456,7 +476,9 @@ export class ProjectsService {
       return [];
     }
 
-    const projectIds = visibleMemberships.map((membership) => membership.projectId);
+    const projectIds = visibleMemberships.map(
+      (membership) => membership.projectId,
+    );
 
     const taskRows = await this.taskRepository
       .createQueryBuilder('task')
@@ -506,7 +528,10 @@ export class ProjectsService {
       .sort((left, right) => left.projectName.localeCompare(right.projectName));
   }
 
-  async getProjectManagersForMember(memberUserId: string, organizationId: string) {
+  async getProjectManagersForMember(
+    memberUserId: string,
+    organizationId: string,
+  ) {
     const memberships = await this.projectMemberRepository.find({
       where: { userId: memberUserId },
       select: { projectId: true },
@@ -565,10 +590,15 @@ export class ProjectsService {
     dto: AddProjectMemberDto,
   ) {
     const project = await this.getAccessibleProject(user, projectId, true);
-    const actorMembership = this.findMembership(project.members ?? [], user.sub);
+    const actorMembership = this.findMembership(
+      project.members ?? [],
+      user.sub,
+    );
 
     if (!canManageProjectMembership(user, actorMembership)) {
-      throw new ForbiddenException('You do not have permission to manage project members.');
+      throw new ForbiddenException(
+        'You do not have permission to manage project members.',
+      );
     }
 
     await this.ensureActiveOrganizationUser(project.organizationId, dto.userId);
@@ -578,7 +608,9 @@ export class ProjectsService {
     });
 
     if (existing) {
-      throw new ConflictException('This user is already a member of the project.');
+      throw new ConflictException(
+        'This user is already a member of the project.',
+      );
     }
 
     await this.projectMemberRepository.save(
@@ -609,10 +641,15 @@ export class ProjectsService {
     dto: UpdateProjectMemberRoleDto,
   ) {
     const project = await this.getAccessibleProject(user, projectId, true);
-    const actorMembership = this.findMembership(project.members ?? [], user.sub);
+    const actorMembership = this.findMembership(
+      project.members ?? [],
+      user.sub,
+    );
 
     if (!canManageProjectMembership(user, actorMembership)) {
-      throw new ForbiddenException('You do not have permission to manage project members.');
+      throw new ForbiddenException(
+        'You do not have permission to manage project members.',
+      );
     }
 
     const membership = await this.projectMemberRepository.findOne({
@@ -623,8 +660,13 @@ export class ProjectsService {
       throw new NotFoundException('Project member not found.');
     }
 
-    if (project.leadUserId === memberUserId && dto.role !== ProjectMemberRole.ADMIN) {
-      throw new BadRequestException('Project lead must remain a project admin.');
+    if (
+      project.leadUserId === memberUserId &&
+      dto.role !== ProjectMemberRole.ADMIN
+    ) {
+      throw new BadRequestException(
+        'Project lead must remain a project admin.',
+      );
     }
 
     membership.role = dto.role;
@@ -639,25 +681,32 @@ export class ProjectsService {
     memberUserId: string,
   ) {
     const project = await this.getAccessibleProject(user, projectId, true);
-    const actorMembership = this.findMembership(project.members ?? [], user.sub);
+    const actorMembership = this.findMembership(
+      project.members ?? [],
+      user.sub,
+    );
 
     if (!canManageProjectMembership(user, actorMembership)) {
-      throw new ForbiddenException('You do not have permission to manage project members.');
+      throw new ForbiddenException(
+        'You do not have permission to manage project members.',
+      );
     }
 
     if (memberUserId === project.leadUserId) {
-      throw new BadRequestException('Project lead cannot be removed from the project.');
+      throw new BadRequestException(
+        'Project lead cannot be removed from the project.',
+      );
     }
 
-    await this.projectMemberRepository.delete({ projectId, userId: memberUserId });
+    await this.projectMemberRepository.delete({
+      projectId,
+      userId: memberUserId,
+    });
 
     return this.listProjectMembers(user, projectId);
   }
 
-  async removeUserFromManagedProjects(
-    actor: JwtPayload,
-    memberUserId: string,
-  ) {
+  async removeUserFromManagedProjects(actor: JwtPayload, memberUserId: string) {
     if (hasOrgWideProjectAccess(actor.role)) {
       throw new BadRequestException(
         'Use organization member management to remove workspace members.',
@@ -665,11 +714,15 @@ export class ProjectsService {
     }
 
     if (actor.role !== RegisterAs.MANAGER) {
-      throw new ForbiddenException('Only managers can remove members from their team.');
+      throw new ForbiddenException(
+        'Only managers can remove members from their team.',
+      );
     }
 
     if (actor.sub === memberUserId) {
-      throw new BadRequestException('You cannot remove yourself from the team.');
+      throw new BadRequestException(
+        'You cannot remove yourself from the team.',
+      );
     }
 
     const member = await this.userRepository.findOne({
@@ -685,7 +738,9 @@ export class ProjectsService {
       member.role === RegisterAs.ADMIN ||
       member.role === RegisterAs.MANAGER
     ) {
-      throw new ForbiddenException('You cannot remove this member from your team.');
+      throw new ForbiddenException(
+        'You cannot remove this member from your team.',
+      );
     }
 
     const managedProjectIds = await this.getManagedProjectIds(actor);
@@ -864,7 +919,9 @@ export class ProjectsService {
     );
 
     if (hasOrgWideProjectAccess(user.role)) {
-      return activeUsers.filter((member) => member.role !== RegisterAs.SUPER_ADMIN);
+      return activeUsers.filter(
+        (member) => member.role !== RegisterAs.SUPER_ADMIN,
+      );
     }
 
     return activeUsers.filter(
@@ -961,7 +1018,9 @@ export class ProjectsService {
     }
 
     for (const userId of nextIds) {
-      const current = existing.find((membership) => membership.userId === userId);
+      const current = existing.find(
+        (membership) => membership.userId === userId,
+      );
 
       if (current) {
         if (userId === leadUserId && current.role !== ProjectMemberRole.ADMIN) {
@@ -1004,13 +1063,18 @@ export class ProjectsService {
   }
 
   private findMembership(memberships: ProjectMember[], userId: string) {
-    return memberships.find((membership) => membership.userId === userId) ?? null;
+    return (
+      memberships.find((membership) => membership.userId === userId) ?? null
+    );
   }
 
   private resolveViewerRole(
     user: JwtPayload,
     memberships: ProjectMember[],
-    membership: ProjectMember | null = this.findMembership(memberships, user.sub),
+    membership: ProjectMember | null = this.findMembership(
+      memberships,
+      user.sub,
+    ),
   ): WorkspaceProjectResponse['viewerRole'] {
     if (hasOrgWideProjectAccess(user.role)) {
       return 'org_admin';
@@ -1084,11 +1148,19 @@ export class ProjectsService {
   }
 
   private async incrementOrganizationProjectCount(organizationId: string) {
-    await this.organizationRepository.increment({ id: organizationId }, 'projectCount', 1);
+    await this.organizationRepository.increment(
+      { id: organizationId },
+      'projectCount',
+      1,
+    );
   }
 
   private async decrementOrganizationProjectCount(organizationId: string) {
-    await this.organizationRepository.decrement({ id: organizationId }, 'projectCount', 1);
+    await this.organizationRepository.decrement(
+      { id: organizationId },
+      'projectCount',
+      1,
+    );
   }
 
   private async loadProjectTaskStats(projectIds: string[]) {
@@ -1105,7 +1177,10 @@ export class ProjectsService {
         'SUM(CASE WHEN task.status = :done THEN 1 ELSE 0 END)',
         'completedTaskCount',
       )
-      .addSelect('COALESCE(SUM(task.estimated_hours), 0)', 'totalEstimatedHours')
+      .addSelect(
+        'COALESCE(SUM(task.estimated_hours), 0)',
+        'totalEstimatedHours',
+      )
       .where('task.project_id IN (:...projectIds)', { projectIds })
       .groupBy('task.project_id')
       .setParameter('done', TaskStatus.DONE)
@@ -1133,7 +1208,10 @@ export class ProjectsService {
     return preference?.theme ?? ProjectTheme.CLASSIC;
   }
 
-  private async loadUserThemesForProjects(userId: string, projectIds: string[]) {
+  private async loadUserThemesForProjects(
+    userId: string,
+    projectIds: string[],
+  ) {
     const themes = new Map<string, ProjectTheme>();
 
     if (projectIds.length === 0) {

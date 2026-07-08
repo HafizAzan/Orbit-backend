@@ -51,7 +51,8 @@ export class CalendarService {
     this.ensureValidRange(query.from, query.to);
 
     const organizationId = user.organizationId!;
-    const projectIds = await this.projectsService.resolveAccessibleProjectIds(user);
+    const projectIds =
+      await this.projectsService.resolveAccessibleProjectIds(user);
 
     const [records, tasks, projects] = await Promise.all([
       this.calendarEventRepository.find({
@@ -163,13 +164,16 @@ export class CalendarService {
   async getProjectSummaries(
     user: JwtPayload,
     query: ListCalendarProjectsQueryDto = {},
-  ): Promise<PaginatedResponse<{
-    id: string;
-    name: string;
-    dotClass: string;
-    eventCount: number;
-  }>> {
-    const projectIds = await this.projectsService.resolveAccessibleProjectIds(user);
+  ): Promise<
+    PaginatedResponse<{
+      id: string;
+      name: string;
+      dotClass: string;
+      eventCount: number;
+    }>
+  > {
+    const projectIds =
+      await this.projectsService.resolveAccessibleProjectIds(user);
 
     if (projectIds.length === 0) {
       return paginateArray([], query);
@@ -240,7 +244,9 @@ export class CalendarService {
 
   private ensureValidRange(from: string, to: string) {
     if (from > to) {
-      throw new BadRequestException('The "from" date must be before the "to" date.');
+      throw new BadRequestException(
+        'The "from" date must be before the "to" date.',
+      );
     }
   }
 

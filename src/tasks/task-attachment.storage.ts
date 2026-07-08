@@ -55,6 +55,9 @@ export const taskAttachmentUploadOptions = {
   }),
 };
 
-export function buildTaskAttachmentStorageKey(taskId: string, storedFileName: string) {
+export function buildTaskAttachmentStorageKey(
+  taskId: string,
+  storedFileName: string,
+) {
   return join('tasks', taskId, storedFileName).replace(/\\/g, '/');
 }

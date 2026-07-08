@@ -37,10 +37,20 @@ export class ActivityEvent {
   @Column({ type: 'varchar', length: 500 })
   summary: string;
 
-  @Column({ name: 'target_label', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'target_label',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   targetLabel: string | null;
 
-  @Column({ name: 'resource_type', type: 'varchar', length: 80, nullable: true })
+  @Column({
+    name: 'resource_type',
+    type: 'varchar',
+    length: 80,
+    nullable: true,
+  })
   resourceType: string | null;
 
   @Column({ name: 'resource_id', type: 'uuid', nullable: true })

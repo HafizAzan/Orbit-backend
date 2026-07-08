@@ -26,6 +26,12 @@ export function createSeedDataSource(): DataSource {
 
   return new DataSource({
     ...baseOptions,
-    entities: [User, Organization, Subscription, PendingRegistration, PasswordReset],
+    entities: [
+      User,
+      Organization,
+      Subscription,
+      PendingRegistration,
+      PasswordReset,
+    ],
   });
 }

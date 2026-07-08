@@ -37,7 +37,11 @@ export function normalizeProjectTheme(
 export function normalizeAppUiTheme(
   theme: string | null | undefined,
 ): AppUiTheme {
-  return normalizeThemeValue(theme, Object.values(AppUiTheme), AppUiTheme.CLASSIC);
+  return normalizeThemeValue(
+    theme,
+    Object.values(AppUiTheme),
+    AppUiTheme.CLASSIC,
+  );
 }
 
 export function isDarkAppUiTheme(theme: AppUiTheme) {

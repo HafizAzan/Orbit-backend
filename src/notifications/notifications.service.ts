@@ -71,7 +71,9 @@ export class NotificationsService {
     return { message: 'All notifications marked as read.' };
   }
 
-  async createAndPush(input: CreateNotificationInput): Promise<NotificationResponse> {
+  async createAndPush(
+    input: CreateNotificationInput,
+  ): Promise<NotificationResponse> {
     const saved = await this.notificationRepository.save(
       this.notificationRepository.create({
         userId: input.userId,
@@ -87,7 +89,11 @@ export class NotificationsService {
     );
 
     const response = mapNotificationResponse(saved);
-    this.realtimeService.emitToUser(input.userId, 'notification:created', response);
+    this.realtimeService.emitToUser(
+      input.userId,
+      'notification:created',
+      response,
+    );
 
     return response;
   }

@@ -137,7 +137,8 @@ export class NotificationDigestService {
 
       const activeMembers = recipients.filter(
         (member) =>
-          member.lastActiveAt && member.lastActiveAt.getTime() >= since.getTime(),
+          member.lastActiveAt &&
+          member.lastActiveAt.getTime() >= since.getTime(),
       ).length;
 
       const frontendUrl = this.configService.get<string>(

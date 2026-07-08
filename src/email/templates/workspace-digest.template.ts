@@ -60,7 +60,10 @@ export function buildDailyDigestEmailHtml(params: {
     items: [
       { label: 'Tasks due today', value: String(params.tasksDueToday) },
       { label: 'Open tasks', value: String(params.openTasks) },
-      { label: 'Activity in the last 24h', value: String(params.recentActivity) },
+      {
+        label: 'Activity in the last 24h',
+        value: String(params.recentActivity),
+      },
     ],
     ctaLabel: 'Open dashboard',
     ctaUrl: params.dashboardUrl,

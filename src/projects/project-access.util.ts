@@ -63,8 +63,7 @@ export function canDeleteProject(
 
   if (actor.role === RegisterAs.MANAGER) {
     return (
-      membership?.role === ProjectMemberRole.ADMIN ||
-      createdById === actor.sub
+      membership?.role === ProjectMemberRole.ADMIN || createdById === actor.sub
     );
   }
 

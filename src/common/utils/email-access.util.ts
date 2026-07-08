@@ -12,7 +12,9 @@ export function canRequestOwnEmailChange(role: RegisterAs) {
   );
 }
 
-export function getEmailChangeRequestRecipientRoles(actorRole: RegisterAs): RegisterAs[] {
+export function getEmailChangeRequestRecipientRoles(
+  actorRole: RegisterAs,
+): RegisterAs[] {
   if (actorRole === RegisterAs.ADMIN) {
     return [RegisterAs.OWNER];
   }

@@ -25,6 +25,10 @@ import { OrganizationMemberGuard } from '../auth/guards/organization-member.guar
     OrganizationMemberGuard,
     OrganizationAdminGuard,
   ],
-  exports: [OrganizationsService, OrganizationMemberGuard, OrganizationAdminGuard],
+  exports: [
+    OrganizationsService,
+    OrganizationMemberGuard,
+    OrganizationAdminGuard,
+  ],
 })
 export class OrganizationsModule {}

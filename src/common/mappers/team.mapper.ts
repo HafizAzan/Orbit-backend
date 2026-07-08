@@ -1,9 +1,5 @@
 import { User } from '../../entities/user.entity';
-import {
-  AccountStatus,
-  RegisterAs,
-  SignupSource,
-} from '../../enum/auth.enum';
+import { AccountStatus, RegisterAs, SignupSource } from '../../enum/auth.enum';
 import { MemberDepartment } from '../../enum/member.enum';
 
 export type TeamMemberStatus = 'active' | 'invited' | 'deactivated';
@@ -85,10 +81,12 @@ function formatLastActive(user: User): string {
   const diffMinutes = Math.floor(diffMs / (1000 * 60));
 
   if (diffMinutes < 1) return 'Just now';
-  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`;
+  if (diffMinutes < 60)
+    return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`;
 
   const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+  if (diffHours < 24)
+    return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
 
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays === 1) return 'Yesterday';
@@ -138,7 +136,9 @@ export function mapTeamMemberResponse(
 }
 
 export function pickAvatarColor(seed: string) {
-  const hash = seed.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const hash = seed
+    .split('')
+    .reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 
@@ -163,11 +163,18 @@ export function isActiveOnDate(date: Date | null, reference: Date) {
   );
 }
 
-export function buildActiveTodayTrend(activeToday: number, activeWeekAgo: number) {
+export function buildActiveTodayTrend(
+  activeToday: number,
+  activeWeekAgo: number,
+) {
   if (activeWeekAgo === 0) {
-    return activeToday > 0 ? 'New activity today' : 'No activity on this day last week';
+    return activeToday > 0
+      ? 'New activity today'
+      : 'No activity on this day last week';
   }
 
-  const change = Math.round(((activeToday - activeWeekAgo) / activeWeekAgo) * 100);
+  const change = Math.round(
+    ((activeToday - activeWeekAgo) / activeWeekAgo) * 100,
+  );
   return `${change >= 0 ? '+' : ''}${change}% vs same day last week`;
 }

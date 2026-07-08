@@ -82,7 +82,11 @@ export class ProjectCommentsService {
       }),
     );
 
-    await this.projectRepository.increment({ id: projectId }, 'commentCount', 1);
+    await this.projectRepository.increment(
+      { id: projectId },
+      'commentCount',
+      1,
+    );
 
     const saved = await this.commentRepository.findOne({
       where: { id: comment.id },
@@ -100,7 +104,9 @@ export class ProjectCommentsService {
       comment: response,
     });
 
-    const memberUserIds = (project.members ?? []).map((member) => member.userId);
+    const memberUserIds = (project.members ?? []).map(
+      (member) => member.userId,
+    );
     const authorName = saved.author?.fullName ?? 'Someone';
     const preview =
       response.message.length > 80
@@ -121,11 +127,7 @@ export class ProjectCommentsService {
     return response;
   }
 
-  async deleteComment(
-    user: JwtPayload,
-    projectId: string,
-    commentId: string,
-  ) {
+  async deleteComment(user: JwtPayload, projectId: string, commentId: string) {
     await this.projectsService.ensureAccessibleProject(user, projectId, true);
 
     const comment = await this.commentRepository.findOne({
@@ -141,7 +143,11 @@ export class ProjectCommentsService {
     }
 
     await this.commentRepository.delete(comment.id);
-    await this.projectRepository.decrement({ id: projectId }, 'commentCount', 1);
+    await this.projectRepository.decrement(
+      { id: projectId },
+      'commentCount',
+      1,
+    );
 
     this.realtimeService.emitToProject(projectId, 'project:comment:deleted', {
       projectId,

@@ -41,7 +41,12 @@ export class Notification {
   @Column({ type: 'boolean', default: false })
   read: boolean;
 
-  @Column({ name: 'resource_type', type: 'varchar', length: 64, nullable: true })
+  @Column({
+    name: 'resource_type',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
   resourceType: string | null;
 
   @Column({ name: 'resource_id', type: 'uuid', nullable: true })

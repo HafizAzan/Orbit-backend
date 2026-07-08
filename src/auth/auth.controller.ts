@@ -28,7 +28,11 @@ import { RequestEmailChangeDto } from './dto/email-change-request.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUiThemeDto } from './dto/update-ui-theme.dto';
-import { DisableTwoFactorDto, EnableTwoFactorDto, VerifyTwoFactorDto } from './dto/two-factor.dto';
+import {
+  DisableTwoFactorDto,
+  EnableTwoFactorDto,
+  VerifyTwoFactorDto,
+} from './dto/two-factor.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
