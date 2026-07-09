@@ -5,8 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { Subscription } from '../../entities/subscription.entity';
 import { isOrganizationSubscriptionActive } from '../../billing/organization-subscription.util';
 import { RegisterAs } from '../../enum/auth.enum';
@@ -14,10 +13,7 @@ import type { JwtPayload } from '../jwt/jwt-payload.type';
 
 @Injectable()
 export class OrganizationSubscriptionActiveGuard implements CanActivate {
-  constructor(
-    @InjectRepository(Subscription)
-    private readonly subscriptionRepository: Repository<Subscription>,
-  ) {}
+  constructor(private readonly dataSource: DataSource) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
@@ -27,9 +23,11 @@ export class OrganizationSubscriptionActiveGuard implements CanActivate {
       return true;
     }
 
+    const subscriptionRepository = this.dataSource.getRepository(Subscription);
+
     if (
       await isOrganizationSubscriptionActive(
-        this.subscriptionRepository,
+        subscriptionRepository,
         user.organizationId,
       )
     ) {

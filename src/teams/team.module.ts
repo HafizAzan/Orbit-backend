@@ -1,11 +1,10 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
+import { OrganizationGuardsModule } from '../auth/organization-guards.module';
 import { EmailModule } from '../email/email.module';
 import { Organization } from '../entities/organization.entity';
 import { User } from '../entities/user.entity';
-import { OrganizationAdminGuard } from '../auth/guards/organization-admin.guard';
-import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
 import { ProjectsModule } from '../projects/projects.module';
 import { ActivityModule } from '../activity/activity.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -17,12 +16,13 @@ import { TeamService } from './team.service';
     TypeOrmModule.forFeature([Organization, User]),
     EmailModule,
     forwardRef(() => AuthModule),
+    OrganizationGuardsModule,
     forwardRef(() => ProjectsModule),
     ActivityModule,
     NotificationsModule,
   ],
   controllers: [TeamController],
-  providers: [TeamService, OrganizationMemberGuard, OrganizationAdminGuard],
+  providers: [TeamService],
   exports: [TeamService],
 })
 export class TeamModule {}

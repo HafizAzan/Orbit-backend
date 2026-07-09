@@ -12,6 +12,7 @@ import databaseConfig, {
 } from './config/database';
 import { envValidationSchema } from './config/env.validation';
 import { AuthModule } from './auth/auth.module';
+import { OrganizationGuardsModule } from './auth/organization-guards.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { BillingModule } from './billing/billing.module';
@@ -50,6 +51,7 @@ import { JobsModule } from './jobs/jobs.module';
     ]),
 
     AuthModule,
+    OrganizationGuardsModule,
     OrganizationsModule,
     SubscriptionsModule,
     BillingModule,

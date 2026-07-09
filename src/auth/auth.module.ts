@@ -17,8 +17,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { OrganizationBillingGuard } from './guards/organization-billing.guard';
-import { OrganizationMemberGuard } from './guards/organization-member.guard';
-import { OrganizationSubscriptionActiveGuard } from './guards/organization-subscription-active.guard';
+import { OrganizationGuardsModule } from './organization-guards.module';
 import { PlatformAdminGuard } from './guards/platform-admin.guard';
 import { RegisterRateLimitGuard } from './rate-limit/register-rate-limit.guard';
 import { RegisterRateLimitService } from './rate-limit/register-rate-limit.service';
@@ -34,6 +33,7 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
       PendingEmailChange,
     ]),
     EmailModule,
+    OrganizationGuardsModule,
     forwardRef(() => OrganizationsModule),
     forwardRef(() => NotificationsModule),
     PassportModule.register({ defaultStrategy: 'jwt' }),
@@ -63,9 +63,8 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
     AuthService,
     JwtStrategy,
     JwtAuthGuard,
+    OrganizationGuardsModule,
     OrganizationBillingGuard,
-    OrganizationMemberGuard,
-    OrganizationSubscriptionActiveGuard,
     PlatformAdminGuard,
     RegisterRateLimitService,
     RegisterRateLimitGuard,
@@ -76,9 +75,8 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
     JwtModule,
     PassportModule,
     JwtAuthGuard,
+    OrganizationGuardsModule,
     OrganizationBillingGuard,
-    OrganizationMemberGuard,
-    OrganizationSubscriptionActiveGuard,
     PlatformAdminGuard,
   ],
 })
