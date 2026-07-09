@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Not, Repository } from 'typeorm';
@@ -28,6 +30,7 @@ import { TaskPriority, TaskStatus } from '../enum/task.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { ProjectsService } from '../projects/projects.service';
 import { ActivityService } from '../activity/activity.service';
+import { BillingService } from '../billing/billing.service';
 import { DashboardPeriod } from './dto/dashboard-query.dto';
 import {
   getDashboardPeriodRange,
@@ -36,6 +39,7 @@ import {
   type DashboardDateRange,
 } from './dashboard-period.util';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ContentModerationService } from '../common/services/content-moderation.service';
 import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import {
   canAccessTeamInsights,
@@ -83,6 +87,9 @@ export class TasksService {
     private readonly projectsService: ProjectsService,
     private readonly activityService: ActivityService,
     private readonly notificationsService: NotificationsService,
+    @Inject(forwardRef(() => BillingService))
+    private readonly billingService: BillingService,
+    private readonly contentModerationService: ContentModerationService,
   ) {}
 
   async listTasks(
@@ -143,6 +150,11 @@ export class TasksService {
     if (user.role === RegisterAs.MEMBER) {
       throw new ForbiddenException('Members cannot create tasks.');
     }
+
+    await this.contentModerationService.assertCleanContent(user.sub, {
+      title: dto.title,
+      description: dto.description,
+    });
 
     const project = await this.projectsService.ensureAccessibleProject(
       user,
@@ -226,6 +238,11 @@ export class TasksService {
         'You do not have permission to edit this task.',
       );
     }
+
+    await this.contentModerationService.assertCleanContent(user.sub, {
+      title: dto.title,
+      description: dto.description,
+    });
 
     const previousStatus = task.status;
     const previousAssigneeId = task.assigneeId;
@@ -446,6 +463,12 @@ export class TasksService {
       );
     }
 
+    await this.billingService.assertHasPlanFeature(
+      user.organizationId!,
+      ['team_dashboards', 'basic_reporting'],
+      'Dashboards are not available on your current plan. Please upgrade.',
+    );
+
     const range = getDashboardPeriodRange(period);
 
     const [projects, tasks, squadIds] = await Promise.all([
@@ -568,6 +591,12 @@ export class TasksService {
         'Reports are only available to owners, admins, and managers.',
       );
     }
+
+    await this.billingService.assertHasPlanFeature(
+      user.organizationId!,
+      ['reports', 'workload_reports'],
+      'Reports are not available on your current plan. Please upgrade.',
+    );
 
     const [projects, tasks] = await Promise.all([
       this.findAccessibleProjects(user),

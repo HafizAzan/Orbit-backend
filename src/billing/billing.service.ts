@@ -17,7 +17,7 @@ import type {
 import { Organization } from '../entities/organization.entity';
 import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
-import { RegisterAs } from '../enum/auth.enum';
+import { AccountStatus, RegisterAs } from '../enum/auth.enum';
 import {
   BillingCycle,
   OrganizationStatus,
@@ -32,11 +32,20 @@ import {
   mapStripeSubscriptionStatus,
   parseProductCatalogPresentation,
   resolvePlanCodeFromProduct,
+  extractMarketingFeatures,
   formatPriceSuffix,
   getSubscriptionPeriodEnd,
   toDateFromUnix,
   toDateOnlyStringFromUnix,
 } from './utils/stripe.util';
+import {
+  buildPlanEntitlements,
+  hasAnyPlanFeature,
+  hasPlanFeature,
+  isWithinPlanLimit,
+  type PlanEntitlements,
+  type PlanFeatureFlag,
+} from './utils/plan-entitlements.util';
 import type {
   CancelPlanDto,
   ChangePlanDto,
@@ -50,6 +59,7 @@ import {
   resolvePagination,
   type PaginatedResponse,
 } from '../common/dto/pagination-query.dto';
+import { Project } from '../entities/project.entity';
 
 export type BillingCatalogPrice = {
   id: string;
@@ -93,6 +103,32 @@ export type BillingInvoiceResponse = {
   refundWindowEndsAt: string | null;
 };
 
+export type OrganizationUsageMetric = {
+  key: 'staff_users' | 'projects' | 'boards';
+  label: string;
+  used: number;
+  limit: number | null;
+  unlimited: boolean;
+};
+
+export type OrganizationUsageResponse = {
+  organizationId: string;
+  plan: PlanCode;
+  productId: string | null;
+  productName: string | null;
+  status: SubscriptionStatus;
+  features: string[];
+  featureFlags: PlanFeatureFlag[];
+  metadata: Record<string, string>;
+  limits: PlanEntitlements['limits'];
+  usage: {
+    staffUsers: number;
+    projects: number;
+    boards: number;
+  };
+  metrics: OrganizationUsageMetric[];
+};
+
 @Injectable()
 export class BillingService {
   constructor(
@@ -104,6 +140,8 @@ export class BillingService {
     private readonly organizationRepository: Repository<Organization>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(Project)
+    private readonly projectRepository: Repository<Project>,
   ) {}
 
   async requiresPlanSelectionForOrganization(organizationId: string) {
@@ -448,6 +486,213 @@ export class BillingService {
       stripePriceId: subscription.stripePriceId,
       lastPaymentAt: subscription.lastPaymentAt?.toISOString() ?? null,
     };
+  }
+
+  async getOrganizationUsage(
+    user: JwtPayload,
+  ): Promise<OrganizationUsageResponse> {
+    if (!user.organizationId) {
+      throw new ForbiddenException('Organization membership is required.');
+    }
+
+    const organization = await this.organizationRepository.findOne({
+      where: { id: user.organizationId },
+      relations: { subscription: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found.');
+    }
+
+    const subscription = await this.getOrCreateLocalSubscription(
+      organization.id,
+    );
+    const entitlements = await this.resolveOrganizationEntitlements(
+      organization.id,
+    );
+    const usage = await this.countOrganizationUsage(organization.id);
+
+    const metrics: OrganizationUsageMetric[] = [
+      {
+        key: 'staff_users',
+        label: 'Team seats',
+        used: usage.staffUsers,
+        limit: entitlements.limits.max_staff_users,
+        unlimited:
+          entitlements.limits.max_staff_users == null ||
+          entitlements.limits.max_staff_users < 0,
+      },
+      {
+        key: 'projects',
+        label: 'Projects',
+        used: usage.projects,
+        limit: entitlements.limits.max_projects,
+        unlimited:
+          entitlements.limits.max_projects == null ||
+          entitlements.limits.max_projects < 0,
+      },
+      {
+        key: 'boards',
+        label: 'Boards',
+        used: usage.boards,
+        limit: entitlements.limits.max_boards,
+        unlimited:
+          entitlements.limits.max_boards == null ||
+          entitlements.limits.max_boards < 0,
+      },
+    ];
+
+    return {
+      organizationId: organization.id,
+      plan: entitlements.plan,
+      productId: entitlements.productId,
+      productName: entitlements.productName,
+      status: subscription.status,
+      features: entitlements.features,
+      featureFlags: entitlements.featureFlags,
+      metadata: entitlements.metadata,
+      limits: entitlements.limits,
+      usage,
+      metrics,
+    };
+  }
+
+  async resolveOrganizationEntitlements(
+    organizationId: string,
+  ): Promise<PlanEntitlements> {
+    const subscription = await this.getOrCreateLocalSubscription(organizationId);
+    const product = await this.resolveSubscriptionStripeProduct(subscription);
+    const presentation = product
+      ? parseProductCatalogPresentation(
+          product.metadata,
+          product.marketing_features,
+        )
+      : null;
+
+    return buildPlanEntitlements({
+      plan: subscription.plan,
+      productId: product?.id ?? null,
+      productName: product?.name ?? null,
+      metadata: presentation?.metadata ?? product?.metadata ?? {},
+      features:
+        presentation?.features ??
+        extractMarketingFeatures(product?.marketing_features),
+    });
+  }
+
+  async getOrganizationSeatLimit(organizationId: string) {
+    const entitlements =
+      await this.resolveOrganizationEntitlements(organizationId);
+    const limit = entitlements.limits.max_staff_users;
+
+    if (limit == null || limit < 0) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    return limit;
+  }
+
+  async assertCanInviteMember(organizationId: string) {
+    const entitlements =
+      await this.resolveOrganizationEntitlements(organizationId);
+    const usage = await this.countOrganizationUsage(organizationId);
+
+    if (
+      !isWithinPlanLimit(usage.staffUsers, entitlements.limits.max_staff_users)
+    ) {
+      throw new BadRequestException(
+        'No seats available. Upgrade your plan or free up a seat first.',
+      );
+    }
+  }
+
+  async assertCanCreateProject(organizationId: string) {
+    const entitlements =
+      await this.resolveOrganizationEntitlements(organizationId);
+
+    if (!hasPlanFeature(entitlements.featureFlags, 'projects')) {
+      throw new ForbiddenException(
+        'Projects are not available on your current plan. Please upgrade.',
+      );
+    }
+
+    const usage = await this.countOrganizationUsage(organizationId);
+
+    if (!isWithinPlanLimit(usage.projects, entitlements.limits.max_projects)) {
+      throw new BadRequestException(
+        'Project limit reached for your plan. Upgrade to create more projects.',
+      );
+    }
+  }
+
+  async assertHasPlanFeature(
+    organizationId: string,
+    feature: PlanFeatureFlag | PlanFeatureFlag[],
+    message?: string,
+  ) {
+    const entitlements =
+      await this.resolveOrganizationEntitlements(organizationId);
+    const features = Array.isArray(feature) ? feature : [feature];
+    const allowed = hasAnyPlanFeature(entitlements.featureFlags, features);
+
+    if (!allowed) {
+      throw new ForbiddenException(
+        message ??
+          `This feature is not available on your current plan. Please upgrade.`,
+      );
+    }
+  }
+
+  private async countOrganizationUsage(organizationId: string) {
+    const [staffUsers, projects] = await Promise.all([
+      this.userRepository
+        .createQueryBuilder('user')
+        .where('user.organizationId = :organizationId', { organizationId })
+        .andWhere('user.accountStatus != :suspended', {
+          suspended: AccountStatus.SUSPENDED,
+        })
+        .getCount(),
+      this.projectRepository.count({
+        where: { organizationId },
+      }),
+    ]);
+
+    // Boards are currently 1:1 with projects in this product.
+    return {
+      staffUsers,
+      projects,
+      boards: projects,
+    };
+  }
+
+  private async resolveSubscriptionStripeProduct(
+    subscription: Subscription,
+  ): Promise<StripeProduct | null> {
+    if (subscription.stripePriceId) {
+      const price = await this.stripeService.client.prices.retrieve(
+        subscription.stripePriceId,
+        { expand: ['product'] },
+      );
+
+      if (price.product && typeof price.product !== 'string') {
+        return price.product as StripeProduct;
+      }
+
+      if (typeof price.product === 'string') {
+        return this.stripeService.client.products.retrieve(price.product);
+      }
+    }
+
+    const catalog = await this.getCatalog();
+    const matched = catalog.products.find(
+      (product) => product.plan === subscription.plan,
+    );
+
+    if (!matched) {
+      return null;
+    }
+
+    return this.stripeService.client.products.retrieve(matched.id);
   }
 
   async handleWebhookEvent(event: StripeEvent) {

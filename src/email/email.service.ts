@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
+import { EmailQueueService } from '../queues/email-queue.service';
 import { buildRegisterOtpEmailHtml } from './templates/register-otp.template';
 import { buildPasswordResetEmailHtml } from './templates/password-reset.template';
 import { buildTeamInviteEmailHtml } from './templates/team-invite.template';
@@ -24,7 +25,10 @@ export class EmailService {
   private readonly transporter: Transporter;
   private readonly from: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly emailQueueService: EmailQueueService,
+  ) {
     const host = this.configService.get<string>('SMTP_HOST');
     const port = Number(this.configService.get<string>('SMTP_PORT', '587'));
     const user = this.configService.get<string>('SMTP_USER');
@@ -209,6 +213,21 @@ export class EmailService {
   }
 
   private async sendEmail(params: {
+    to: string;
+    subject: string;
+    html: string;
+    failureMessage: string;
+  }) {
+    if (this.emailQueueService.isEnabled()) {
+      await this.emailQueueService.sendEmail(params);
+      return;
+    }
+
+    await this.deliverEmail(params);
+  }
+
+  /** Worker-only: SMTP send without re-queue. */
+  async deliverEmail(params: {
     to: string;
     subject: string;
     html: string;

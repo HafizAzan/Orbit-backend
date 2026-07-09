@@ -29,6 +29,12 @@ export const envValidationSchema = Joi.object({
   STRIPE_SECRET_KEY: Joi.string().required(),
   STRIPE_WEBHOOK_SECRET: Joi.string().required(),
   STRIPE_REFUND_WINDOW_DAYS: Joi.number().integer().min(1).max(90).default(7),
+  CURSOR_API_KEY: Joi.string().required(),
+  CURSOR_MODEL: Joi.string().default('composer-2.5'),
+  QUEUE_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  REDIS_HOST: Joi.string().hostname().default('127.0.0.1'),
+  REDIS_PORT: Joi.number().port().default(6379),
+  REDIS_PASSWORD: Joi.string().allow('').optional(),
   CORS_ORIGIN: Joi.string()
     .required()
     .custom((value, helpers) => {

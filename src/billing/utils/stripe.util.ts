@@ -55,65 +55,6 @@ export function extractMarketingFeatures(
     .filter((name): name is string => Boolean(name));
 }
 
-export function buildMetadataLimitFeatures(
-  metadata: Record<string, string>,
-): string[] {
-  const features: string[] = [];
-
-  const maxFacilities = metadata.max_facilities;
-  if (maxFacilities) {
-    features.push(
-      maxFacilities === '1'
-        ? '1 facility'
-        : `Up to ${maxFacilities} facilities`,
-    );
-  }
-
-  const maxResidents = metadata.max_residents;
-  if (maxResidents) {
-    features.push(
-      maxResidents === '1' ? '1 resident' : `Up to ${maxResidents} residents`,
-    );
-  }
-
-  const maxStaffUsers = metadata.max_staff_users;
-  if (maxStaffUsers) {
-    features.push(
-      maxStaffUsers === '1'
-        ? '1 staff user'
-        : `Up to ${maxStaffUsers} staff users`,
-    );
-  }
-
-  const refundDays = metadata.refund_days;
-  if (refundDays) {
-    features.push(`${refundDays}-day refund window`);
-  }
-
-  return features;
-}
-
-function mergeUniqueFeatures(...featureLists: string[][]): string[] {
-  const seen = new Set<string>();
-  const merged: string[] = [];
-
-  for (const featureList of featureLists) {
-    for (const feature of featureList) {
-      const normalized = feature.trim();
-      const key = normalized.toLowerCase();
-
-      if (!normalized || seen.has(key)) {
-        continue;
-      }
-
-      seen.add(key);
-      merged.push(normalized);
-    }
-  }
-
-  return merged;
-}
-
 const PLAN_TIER_SORT_ORDER: Record<string, number> = {
   starter: 1,
   free: 1,
@@ -186,13 +127,14 @@ export function resolveProductFeatures(
   metadata: Record<string, string> | null | undefined,
   marketingFeatures?: Array<{ name?: string | null }> | null,
 ): string[] {
-  const normalizedMetadata = normalizeProductMetadata(metadata);
+  const fromMarketing = extractMarketingFeatures(marketingFeatures);
 
-  return mergeUniqueFeatures(
-    extractMarketingFeatures(marketingFeatures),
-    parseProductFeatures(normalizedMetadata),
-    buildMetadataLimitFeatures(normalizedMetadata),
-  );
+  // Prefer Stripe Product marketing_features; fall back to metadata.features only.
+  if (fromMarketing.length > 0) {
+    return fromMarketing;
+  }
+
+  return parseProductFeatures(metadata);
 }
 
 export type ProductCatalogPresentation = {

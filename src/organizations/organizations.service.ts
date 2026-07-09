@@ -2,9 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException,
+  forwardRef,
 } from '@nestjs/common';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import {
@@ -69,6 +71,7 @@ import { filterOrganizationMembersForList } from '../common/utils/filter-organiz
 import { canActorChangeMemberEmail } from '../common/utils/email-access.util';
 import { ProjectsService } from '../projects/projects.service';
 import { ActivityService } from '../activity/activity.service';
+import { BillingService } from '../billing/billing.service';
 import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import { hasOrgWideProjectAccess } from '../projects/project-access.util';
 import { mergeOrganizationWorkspaceSettings } from '../common/types/organization-workspace-settings.type';
@@ -104,6 +107,8 @@ export class OrganizationsService {
     private readonly userRepository: Repository<User>,
     private readonly projectsService: ProjectsService,
     private readonly activityService: ActivityService,
+    @Inject(forwardRef(() => BillingService))
+    private readonly billingService: BillingService,
   ) {}
 
   async findAll(
@@ -454,8 +459,11 @@ export class OrganizationsService {
       (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
     );
     const planCode = organization.subscription?.plan ?? PlanCode.FREE;
+    const totalSeats = await this.billingService.getOrganizationSeatLimit(
+      organization.id,
+    );
 
-    return mapOrganizationMembersSummary(members, planCode, query);
+    return mapOrganizationMembersSummary(members, planCode, query, totalSeats);
   }
 
   async getOrganizationAbout(

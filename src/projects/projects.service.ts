@@ -61,6 +61,8 @@ import {
 } from './project-access.util';
 import { normalizeProjectTheme } from '../common/theme-normalize.util';
 import { NotificationsService } from '../notifications/notifications.service';
+import { BillingService } from '../billing/billing.service';
+import { ContentModerationService } from '../common/services/content-moderation.service';
 
 @Injectable()
 export class ProjectsService {
@@ -77,9 +79,12 @@ export class ProjectsService {
     private readonly organizationRepository: Repository<Organization>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @Inject(forwardRef(() => BillingService))
+    private readonly billingService: BillingService,
     @Inject(forwardRef(() => ActivityService))
     private readonly activityService: ActivityService,
     private readonly notificationsService: NotificationsService,
+    private readonly contentModerationService: ContentModerationService,
   ) {}
 
   async listProjects(user: JwtPayload, query: ListProjectsQueryDto = {}) {
@@ -163,7 +168,14 @@ export class ProjectsService {
       );
     }
 
+    await this.contentModerationService.assertCleanContent(user.sub, {
+      name: dto.name,
+      description: dto.description,
+      key: dto.key,
+    });
+
     const organizationId = user.organizationId!;
+    await this.billingService.assertCanCreateProject(organizationId);
 
     await this.ensureUniqueProjectKey(
       organizationId,
@@ -243,6 +255,12 @@ export class ProjectsService {
         'You do not have permission to edit this project.',
       );
     }
+
+    await this.contentModerationService.assertCleanContent(user.sub, {
+      name: dto.name,
+      description: dto.description,
+      key: dto.key,
+    });
 
     if (dto.key && dto.key.trim().toUpperCase() !== project.key) {
       await this.ensureUniqueProjectKey(

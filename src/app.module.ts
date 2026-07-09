@@ -23,6 +23,9 @@ import { CalendarModule } from './calendar/calendar.module';
 import { ActivityModule } from './activity/activity.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { JobsModule } from './jobs/jobs.module';
+import { AiModule } from './ai/ai.module';
+import { CommonModule } from './common/common.module';
+import { QueueModule } from './queues/queue.module';
 
 // module decorator
 @Module({
@@ -50,6 +53,8 @@ import { JobsModule } from './jobs/jobs.module';
       },
     ]),
 
+    CommonModule,
+    QueueModule.forRoot(),
     AuthModule,
     OrganizationGuardsModule,
     OrganizationsModule,
@@ -62,6 +67,7 @@ import { JobsModule } from './jobs/jobs.module';
     ActivityModule,
     NotificationsModule,
     JobsModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [

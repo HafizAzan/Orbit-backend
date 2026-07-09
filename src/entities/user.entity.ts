@@ -107,6 +107,9 @@ export class User {
   @Column({ name: 'token_version', type: 'integer', default: 0 })
   tokenVersion: number;
 
+  @Column({ name: 'abuse_warning_count', type: 'integer', default: 0 })
+  abuseWarningCount: number;
+
   @Column({
     name: 'two_factor_challenge_id',
     type: 'varchar',

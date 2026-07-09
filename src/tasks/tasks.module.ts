@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { OrganizationGuardsModule } from '../auth/organization-guards.module';
+import { BillingModule } from '../billing/billing.module';
 import { Project } from '../entities/project.entity';
 import { Task } from '../entities/task.entity';
 import { TaskAttachment } from '../entities/task-attachment.entity';
@@ -15,6 +16,7 @@ import { TasksService } from './tasks.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Task, TaskAttachment, Project, User]),
+    forwardRef(() => BillingModule),
     forwardRef(() => AuthModule),
     OrganizationGuardsModule,
     forwardRef(() => ProjectsModule),

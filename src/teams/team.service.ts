@@ -2,8 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -18,7 +20,6 @@ import {
   type TeamMemberResponse,
   type TeamStatsResponse,
 } from '../common/mappers/team.mapper';
-import { resolveOrganizationSeatLimit } from '../common/mappers/organization.mapper';
 import { Organization } from '../entities/organization.entity';
 import { User } from '../entities/user.entity';
 import { EmailService } from '../email/email.service';
@@ -30,7 +31,6 @@ import {
   SignupSource,
 } from '../enum/auth.enum';
 import { MemberDepartment } from '../enum/member.enum';
-import { PlanCode } from '../enum/billing.enum';
 import {
   ensureNotLastActiveAdmin,
   invalidateUserSessions,
@@ -45,6 +45,7 @@ import {
 import { ProjectsService } from '../projects/projects.service';
 import { ActivityService } from '../activity/activity.service';
 import { PresenceService } from '../realtime/presence.service';
+import { BillingService } from '../billing/billing.service';
 import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import { ListMembersQueryDto } from '../common/dto/list-members-query.dto';
 import {
@@ -75,6 +76,8 @@ export class TeamService {
     private readonly projectsService: ProjectsService,
     private readonly activityService: ActivityService,
     private readonly presenceService: PresenceService,
+    @Inject(forwardRef(() => BillingService))
+    private readonly billingService: BillingService,
     @InjectRepository(Organization)
     private readonly organizationRepository: Repository<Organization>,
     @InjectRepository(User)
@@ -194,8 +197,9 @@ export class TeamService {
       members = members.filter((member) => squadIds.has(member.id));
     }
 
-    const planCode = organization.subscription?.plan ?? PlanCode.FREE;
-    const totalSeats = resolveOrganizationSeatLimit(planCode);
+    const totalSeats = await this.billingService.getOrganizationSeatLimit(
+      organization.id,
+    );
     const occupiedSeats = members.filter(
       (member) => member.accountStatus !== AccountStatus.SUSPENDED,
     ).length;
@@ -284,13 +288,7 @@ export class TeamService {
       actor.organizationId!,
     );
     const email = dto.email.trim().toLowerCase();
-    const stats = await this.getStats(actor);
-
-    if (stats.totalSeats.used >= stats.totalSeats.total) {
-      throw new BadRequestException(
-        'No seats available. Upgrade your plan or free up a seat first.',
-      );
-    }
+    await this.billingService.assertCanInviteMember(organization.id);
 
     const existing = await this.userRepository.findOne({
       where: { email, organizationId: organization.id },

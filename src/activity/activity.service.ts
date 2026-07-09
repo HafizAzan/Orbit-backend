@@ -6,7 +6,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import {
   buildPaginatedResponse,
   resolvePagination,
@@ -20,11 +20,7 @@ import {
 import { canDeleteActivity } from '../common/utils/activity-access.util';
 import { ActivityEvent } from '../entities/activity-event.entity';
 import { User } from '../entities/user.entity';
-import {
-  ActivityAction,
-  ActivityModule,
-  MANAGER_ACTIVITY_MODULES,
-} from '../enum/activity.enum';
+import { ActivityAction, ActivityModule } from '../enum/activity.enum';
 import { RegisterAs } from '../enum/auth.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { ProjectsService } from '../projects/projects.service';
@@ -133,6 +129,23 @@ export class ActivityService {
     );
   }
 
+  async getVisibleActivity(user: JwtPayload, activityId: string) {
+    if (!user.organizationId) {
+      throw new ForbiddenException('Organization membership is required.');
+    }
+
+    const qb = await this.createVisibleQuery(user, {});
+    qb.andWhere('activity.id = :activityId', { activityId });
+
+    const event = await qb.getOne();
+
+    if (!event) {
+      throw new NotFoundException('Activity log not found.');
+    }
+
+    return event;
+  }
+
   async deleteActivity(user: JwtPayload, activityId: string) {
     const event = await this.activityRepository.findOne({
       where: { id: activityId, organizationId: user.organizationId! },
@@ -205,44 +218,7 @@ export class ActivityService {
       return;
     }
 
-    if (user.role === RegisterAs.MANAGER) {
-      const projectIds =
-        await this.projectsService.resolveAccessibleProjectIds(user);
-      const squadIds = [...(await this.projectsService.getSquadUserIds(user))];
-
-      qb.andWhere('activity.module IN (:...modules)', {
-        modules: MANAGER_ACTIVITY_MODULES,
-      });
-
-      qb.andWhere(
-        new Brackets((scope) => {
-          scope.where('activity.actor_id = :actorId', { actorId: user.sub });
-
-          if (projectIds.length > 0) {
-            scope.orWhere('activity.project_id IN (:...projectIds)', {
-              projectIds,
-            });
-          }
-
-          if (squadIds.length > 0) {
-            scope.orWhere(
-              new Brackets((teamScope) => {
-                teamScope
-                  .where('activity.module = :teamsModule', {
-                    teamsModule: ActivityModule.TEAMS,
-                  })
-                  .andWhere('activity.actor_id IN (:...squadIds)', {
-                    squadIds,
-                  });
-              }),
-            );
-          }
-        }),
-      );
-
-      return;
-    }
-
+    // Managers and members cannot browse the org activity log.
     qb.andWhere('1 = 0');
   }
 }

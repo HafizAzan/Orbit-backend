@@ -19,6 +19,7 @@ import { TaskStatus } from '../enum/task.enum';
 import { RegisterAs } from '../enum/auth.enum';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { hasOrgWideProjectAccess } from '../projects/project-access.util';
+import { ContentModerationService } from '../common/services/content-moderation.service';
 import { ProjectsService } from '../projects/projects.service';
 import { canViewAllOrganizationTasks } from '../tasks/task-access.util';
 import {
@@ -42,6 +43,7 @@ export class CalendarService {
     @InjectRepository(Project)
     private readonly projectRepository: Repository<Project>,
     private readonly projectsService: ProjectsService,
+    private readonly contentModerationService: ContentModerationService,
   ) {}
 
   async listEvents(
@@ -86,6 +88,10 @@ export class CalendarService {
 
   async createEvent(user: JwtPayload, dto: CreateCalendarEventDto) {
     this.ensureCanManageCustomCalendarEvents(user);
+    await this.contentModerationService.assertCleanContent(user.sub, {
+      title: dto.title,
+      description: dto.description,
+    });
 
     if (dto.projectId) {
       await this.projectsService.ensureAccessibleProject(
@@ -116,6 +122,10 @@ export class CalendarService {
     dto: UpdateCalendarEventDto,
   ) {
     this.ensureCanManageCustomCalendarEvents(user);
+    await this.contentModerationService.assertCleanContent(user.sub, {
+      title: dto.title,
+      description: dto.description,
+    });
     const event = await this.getOwnedEvent(user, eventId);
 
     if (dto.title !== undefined) {

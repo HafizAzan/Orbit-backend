@@ -14,6 +14,7 @@ import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrganizationBillingGuard } from '../auth/guards/organization-billing.guard';
+import { OrganizationMemberGuard } from '../auth/guards/organization-member.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import { BillingService } from './billing.service';
@@ -41,6 +42,12 @@ export class BillingController {
   @UseGuards(JwtAuthGuard, OrganizationBillingGuard)
   getCurrentSubscription(@CurrentUser() user: JwtPayload) {
     return this.billingService.getCurrentSubscription(user);
+  }
+
+  @Get('usage')
+  @UseGuards(JwtAuthGuard, OrganizationMemberGuard)
+  getOrganizationUsage(@CurrentUser() user: JwtPayload) {
+    return this.billingService.getOrganizationUsage(user);
   }
 
   @Post('checkout')

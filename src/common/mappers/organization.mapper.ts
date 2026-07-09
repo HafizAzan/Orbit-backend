@@ -126,6 +126,7 @@ export function mapOrganizationMembersSummary(
   members: User[],
   planCode: string,
   query: PaginationQueryDto = {},
+  totalSeatsOverride?: number,
 ): OrganizationMembersSummaryResponse {
   const activeMembers = members.filter(
     (member) => member.accountStatus !== AccountStatus.SUSPENDED,
@@ -141,7 +142,8 @@ export function mapOrganizationMembersSummary(
 
   return {
     occupiedSeats: activeMembers.length,
-    totalSeats: resolveOrganizationSeatLimit(planCode),
+    totalSeats:
+      totalSeatsOverride ?? resolveOrganizationSeatLimit(planCode),
     ...paginated,
   };
 }
