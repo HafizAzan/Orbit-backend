@@ -3,22 +3,22 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { EmailModule } from '../email/email.module';
 import { Organization } from '../entities/organization.entity';
 import { PasswordReset } from '../entities/password-reset.entity';
 import { PendingEmailChange } from '../entities/pending-email-change.entity';
 import { PendingRegistration } from '../entities/pending-registration.entity';
 import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
-import { EmailModule } from '../email/email.module';
-import { OrganizationsModule } from '../organizations/organizations.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { OrganizationsModule } from '../organizations/organizations.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { JwtStrategy } from './jwt/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { OrganizationBillingGuard } from './guards/organization-billing.guard';
-import { OrganizationGuardsModule } from './organization-guards.module';
 import { PlatformAdminGuard } from './guards/platform-admin.guard';
+import { JwtStrategy } from './jwt/jwt.strategy';
+import { OrganizationGuardsModule } from './organization-guards.module';
 import { RegisterRateLimitGuard } from './rate-limit/register-rate-limit.guard';
 import { RegisterRateLimitService } from './rate-limit/register-rate-limit.service';
 
@@ -42,6 +42,11 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
         const secret = configService.get<string>('JWT_SECRET');
+        const expiresIn = configService.get<string>(
+          'JWT_EXPIRES_IN',
+          '30m',
+        ) as never;
+
         if (!secret) {
           throw new Error('JWT_SECRET is not configured.');
         }
@@ -49,10 +54,7 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
         return {
           secret,
           signOptions: {
-            expiresIn: configService.get<string>(
-              'JWT_EXPIRES_IN',
-              '7d',
-            ) as never,
+            expiresIn,
           },
         };
       },

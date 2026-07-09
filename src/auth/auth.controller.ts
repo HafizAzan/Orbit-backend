@@ -10,31 +10,32 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { getClientIp } from '../common/utils/get-client-ip.util';
+import { AcceptInviteDto } from '../dto/accept-invite.dto';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto';
-import { RegisterDto } from '../dto/register.dto';
 import { LoginDto } from '../dto/login.dto';
 import { RegisterPendingQueryDto } from '../dto/register-pending-query.dto';
+import { RegisterDto } from '../dto/register.dto';
 import { ResendRegisterOtpDto } from '../dto/resend-register-otp.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
+import { ValidateInviteTokenQueryDto } from '../dto/validate-invite-token-query.dto';
 import { ValidateResetTokenQueryDto } from '../dto/validate-reset-token-query.dto';
 import { VerifyRegisterDto } from '../dto/verify-register.dto';
-import { ValidateInviteTokenQueryDto } from '../dto/validate-invite-token-query.dto';
-import { AcceptInviteDto } from '../dto/accept-invite.dto';
+import { AuthService } from './auth.service';
+import { CurrentUser } from './decorators/current-user.decorator';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { RequestEmailChangeDto } from './dto/email-change-request.dto';
 import {
   ConfirmEmailChangeDto,
   InitiateEmailChangeDto,
 } from './dto/email-change.dto';
-import { RequestEmailChangeDto } from './dto/email-change-request.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
-import { UpdateProfileDto } from './dto/update-profile.dto';
-import { UpdateUiThemeDto } from './dto/update-ui-theme.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import {
   DisableTwoFactorDto,
   EnableTwoFactorDto,
   VerifyTwoFactorDto,
 } from './dto/two-factor.dto';
-import { CurrentUser } from './decorators/current-user.decorator';
-import { AuthService } from './auth.service';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateUiThemeDto } from './dto/update-ui-theme.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { JwtPayload } from './jwt/jwt-payload.type';
 import { RegisterRateLimitGuard } from './rate-limit/register-rate-limit.guard';
@@ -68,6 +69,11 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('refresh')
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refreshSession(dto.refreshToken);
   }
 
   @Post('2fa/verify')

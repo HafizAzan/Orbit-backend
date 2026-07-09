@@ -14,7 +14,12 @@ export const envValidationSchema = Joi.object({
   DB_SSL: Joi.string().valid('true', 'false').default('true'),
 
   JWT_SECRET: Joi.string().min(32).required(),
-  JWT_EXPIRES_IN: Joi.string().default('7d'),
+  JWT_EXPIRES_IN: Joi.string().default('30m'),
+  JWT_SESSION_EXPIRES_IN: Joi.string().default('30m'),
+  JWT_REMEMBER_EXPIRES_IN: Joi.string().default('30d'),
+  JWT_REFRESH_SECRET: Joi.string().min(32).required(),
+  JWT_REFRESH_SESSION_EXPIRES_IN: Joi.string().default('30m'),
+  JWT_REFRESH_REMEMBER_EXPIRES_IN: Joi.string().default('30d'),
   SMTP_HOST: Joi.string().hostname().required(),
   SMTP_PORT: Joi.number().port().default(587),
   SMTP_USER: Joi.string().email().required(),

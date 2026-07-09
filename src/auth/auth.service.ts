@@ -16,12 +16,20 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
-import { ForgotPasswordDto } from '../dto/forgot-password.dto';
+import { normalizeAppUiTheme } from '../common/theme-normalize.util';
+import { DEFAULT_ORGANIZATION_WORKSPACE_SETTINGS } from '../common/types/organization-workspace-settings.type';
+import {
+  canChangeOwnEmail,
+  canRequestOwnEmailChange,
+  getEmailChangeRequestRecipientRoles,
+} from '../common/utils/email-access.util';
 import { AcceptInviteDto } from '../dto/accept-invite.dto';
-import { RegisterDto } from '../dto/register.dto';
+import { ForgotPasswordDto } from '../dto/forgot-password.dto';
 import { LoginDto } from '../dto/login.dto';
+import { RegisterDto } from '../dto/register.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { VerifyRegisterDto } from '../dto/verify-register.dto';
+import { EmailService } from '../email/email.service';
 import { Organization } from '../entities/organization.entity';
 import { PasswordReset } from '../entities/password-reset.entity';
 import { PendingEmailChange } from '../entities/pending-email-change.entity';
@@ -35,43 +43,37 @@ import {
   RegisterAs,
   SignupSource,
 } from '../enum/auth.enum';
-import { RegisterRateLimitService } from './rate-limit/register-rate-limit.service';
-import type { JwtPayload } from './jwt/jwt-payload.type';
-import { EmailService } from '../email/email.service';
 import { OrganizationStatus } from '../enum/billing.enum';
-import { OrganizationsService } from '../organizations/organizations.service';
-import { NotificationsService } from '../notifications/notifications.service';
 import { MemberDepartment } from '../enum/member.enum';
+import { NotificationsService } from '../notifications/notifications.service';
+import { OrganizationsService } from '../organizations/organizations.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
-import { UpdateProfileDto } from './dto/update-profile.dto';
-import { UpdateUiThemeDto } from './dto/update-ui-theme.dto';
-import { normalizeAppUiTheme } from '../common/theme-normalize.util';
-import {
-  canChangeOwnEmail,
-  canRequestOwnEmailChange,
-  getEmailChangeRequestRecipientRoles,
-} from '../common/utils/email-access.util';
+import { RequestEmailChangeDto } from './dto/email-change-request.dto';
 import {
   ConfirmEmailChangeDto,
   InitiateEmailChangeDto,
 } from './dto/email-change.dto';
-import { RequestEmailChangeDto } from './dto/email-change-request.dto';
-import { DEFAULT_ORGANIZATION_WORKSPACE_SETTINGS } from '../common/types/organization-workspace-settings.type';
-import {
-  buildTwoFactorOtpAuthUrl,
-  generateTwoFactorSecret,
-  verifyTwoFactorCode,
-} from './two-factor.util';
 import {
   DisableTwoFactorDto,
   EnableTwoFactorDto,
   VerifyTwoFactorDto,
 } from './dto/two-factor.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateUiThemeDto } from './dto/update-ui-theme.dto';
+import type { JwtPayload } from './jwt/jwt-payload.type';
+import { RegisterRateLimitService } from './rate-limit/register-rate-limit.service';
+import {
+  buildTwoFactorOtpAuthUrl,
+  generateTwoFactorSecret,
+  verifyTwoFactorCode,
+} from './two-factor.util';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
-const JWT_REMEMBER_EXPIRES_IN = '15d';
-const JWT_SESSION_EXPIRES_IN = '8h';
+const JWT_REFRESH_REMEMBER_EXPIRES_IN = '30d';
+const JWT_REMEMBER_EXPIRES_IN = '30d';
+const JWT_SESSION_EXPIRES_IN = '30m';
+const JWT_REFRESH_SESSION_EXPIRES_IN = '30m';
 const FORGOT_PASSWORD_MESSAGE =
   'If an account exists for this email, a password reset link has been sent.';
 
@@ -106,7 +108,13 @@ export type AuthLoginResponse =
 export type AuthSessionResponse = {
   message: string;
   accessToken: string;
+  refreshToken: string;
   user: AuthUserResponse;
+};
+
+export type AuthRefreshResponse = {
+  accessToken: string;
+  refreshToken: string;
 };
 
 export type InviteValidationResponse = {
@@ -373,7 +381,7 @@ export class AuthService {
 
     return {
       message: `${organization.name} created successfully. You are now the organization owner.`,
-      accessToken: this.signAccessToken(user, false, workspaceSettings),
+      ...this.issueAuthTokens(user, false, workspaceSettings),
       user: await this.toAuthUserResponse(user, organization),
     };
   }
@@ -437,7 +445,7 @@ export class AuthService {
 
     return {
       message: `Welcome back, ${user.fullName}.`,
-      accessToken: this.signAccessToken(user, remember, workspaceSettings),
+      ...this.issueAuthTokens(user, remember, workspaceSettings),
       user: await this.toAuthUserResponse(user, user.organization),
     };
   }
@@ -1127,14 +1135,12 @@ export class AuthService {
 
     return {
       message: `Welcome to ${organization.name}, ${fullName}.`,
-      accessToken: this.signAccessToken(member, false, workspaceSettings),
+      ...this.issueAuthTokens(member, false, workspaceSettings),
       user: await this.toAuthUserResponse(member, organization),
     };
   }
 
-  async resolveOrganizationAwaitingSubscription(
-    user: User,
-  ): Promise<boolean> {
+  async resolveOrganizationAwaitingSubscription(user: User): Promise<boolean> {
     if (!user.organizationId) {
       return false;
     }
@@ -1258,6 +1264,17 @@ export class AuthService {
     return reset;
   }
 
+  private issueAuthTokens(
+    user: User,
+    remember = false,
+    workspaceSettings = DEFAULT_ORGANIZATION_WORKSPACE_SETTINGS,
+  ): AuthRefreshResponse {
+    return {
+      accessToken: this.signAccessToken(user, remember, workspaceSettings),
+      refreshToken: this.signRefreshToken(user, remember),
+    };
+  }
+
   private signAccessToken(
     user: User,
     remember = false,
@@ -1270,6 +1287,7 @@ export class AuthService {
       isPlatformAdmin: user.isPlatformAdmin,
       organizationId: user.organizationId,
       tokenVersion: user.tokenVersion ?? 0,
+      remember: remember === true,
     };
 
     const sessionExpiresIn = this.configService.get<string>(
@@ -1287,6 +1305,67 @@ export class AuthService {
         : rememberExpiresIn;
 
     return this.jwtService.sign(payload, { expiresIn: expiresIn as never });
+  }
+
+  private getRefreshSecret() {
+    const secret = this.configService.get<string>('JWT_REFRESH_SECRET');
+    if (!secret) {
+      throw new Error('JWT_REFRESH_SECRET is not configured.');
+    }
+    return secret;
+  }
+
+  private signRefreshToken(user: User, remember = false): string {
+    const sessionExpiresIn = this.configService.get<string>(
+      'JWT_REFRESH_SESSION_EXPIRES_IN',
+      JWT_REFRESH_SESSION_EXPIRES_IN,
+    );
+    const rememberExpiresIn = this.configService.get<string>(
+      'JWT_REFRESH_REMEMBER_EXPIRES_IN',
+      JWT_REFRESH_REMEMBER_EXPIRES_IN,
+    );
+
+    return this.jwtService.sign(
+      {
+        sub: user.id,
+        type: 'refresh',
+        remember: remember === true,
+        tokenVersion: user.tokenVersion ?? 0,
+      },
+      {
+        secret: this.getRefreshSecret(),
+        expiresIn: (remember ? rememberExpiresIn : sessionExpiresIn) as never,
+      },
+    );
+  }
+
+  private verifyRefreshToken(refreshToken: string) {
+    let payload: {
+      sub?: string;
+      type?: string;
+      remember?: boolean;
+      tokenVersion?: number;
+    };
+
+    try {
+      payload = this.jwtService.verify(refreshToken, {
+        secret: this.getRefreshSecret(),
+      });
+    } catch {
+      throw new UnauthorizedException(
+        'Refresh token expired. Please sign in again.',
+      );
+    }
+
+    if (payload.type !== 'refresh' || !payload.sub) {
+      throw new UnauthorizedException('Invalid refresh token.');
+    }
+
+    return {
+      sub: payload.sub,
+      remember: payload.remember === true,
+      tokenVersion: payload.tokenVersion ?? 0,
+    };
   }
 
   private isOrganizationTwoFactorEnforced(
@@ -1307,11 +1386,17 @@ export class AuthService {
   ): Omit<AuthTwoFactorChallengeResponse, 'message'> {
     const challengeId = randomUUID();
     user.twoFactorChallengeId = challengeId;
-    void this.userRepository.update(user.id, { twoFactorChallengeId: challengeId });
+    void this.userRepository.update(user.id, {
+      twoFactorChallengeId: challengeId,
+    });
 
     return {
       requiresTwoFactor: true,
-      challengeToken: this.signTwoFactorChallengeToken(user, remember, challengeId),
+      challengeToken: this.signTwoFactorChallengeToken(
+        user,
+        remember,
+        challengeId,
+      ),
     };
   }
 
@@ -1374,9 +1459,53 @@ export class AuthService {
 
     return {
       message: message ?? `Welcome back, ${user.fullName}.`,
-      accessToken: this.signAccessToken(user, remember, workspaceSettings),
+      ...this.issueAuthTokens(user, remember, workspaceSettings),
       user: await this.toAuthUserResponse(user, user.organization),
     };
+  }
+
+  async refreshSession(refreshToken: string): Promise<AuthRefreshResponse> {
+    const payload = this.verifyRefreshToken(refreshToken);
+
+    const user = await this.userRepository.findOne({
+      where: { id: payload.sub },
+      relations: { organization: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid refresh token.');
+    }
+
+    if (user.accountStatus === AccountStatus.SUSPENDED) {
+      throw new UnauthorizedException('Your account has been suspended.');
+    }
+
+    if (user.accountStatus === AccountStatus.PENDING) {
+      throw new UnauthorizedException('Your account is not active yet.');
+    }
+
+    if (
+      user.emailVerificationStatus !== EmailVerificationStatus.VERIFIED &&
+      !user.isPlatformAdmin
+    ) {
+      throw new UnauthorizedException(
+        'Please verify your email before continuing.',
+      );
+    }
+
+    const tokenVersion = payload.tokenVersion ?? 0;
+    if (tokenVersion !== (user.tokenVersion ?? 0)) {
+      throw new UnauthorizedException(
+        'Your session is no longer valid. Please sign in again.',
+      );
+    }
+
+    const remember = payload.remember === true;
+    const workspaceSettings = await this.getOrganizationWorkspaceSettings(
+      user.organizationId,
+    );
+
+    return this.issueAuthTokens(user, remember, workspaceSettings);
   }
 
   async invalidateUserSessions(userId: string) {
