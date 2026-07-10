@@ -950,17 +950,11 @@ export class ProjectsService {
     }
 
     if (user.role === RegisterAs.MANAGER) {
-      const squadIds = await this.getSquadUserIds(user);
-
-      return activeUsers.filter(
-        (member) =>
-          squadIds.has(member.id) &&
-          (member.role === RegisterAs.MEMBER ||
-            member.role === RegisterAs.MANAGER ||
-            member.role === RegisterAs.ADMIN),
-      );
+      // Managers build the execution squad from workspace members only.
+      return activeUsers.filter((member) => member.role === RegisterAs.MEMBER);
     }
 
+    // Owners/admins pick delivery leads (managers/admins) and operational staff.
     return activeUsers.filter(
       (member) =>
         member.role === RegisterAs.MEMBER ||

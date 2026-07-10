@@ -868,18 +868,6 @@ export class TasksService {
     assigneeId: string,
     project: Project,
   ) {
-    const assignable = await this.projectsService.listAssignableMembers(user);
-    const allowedIds = new Set([
-      ...assignable.data.map((member) => member.id),
-      ...(project.members ?? []).map((membership) => membership.userId),
-    ]);
-
-    if (!allowedIds.has(assigneeId)) {
-      throw new BadRequestException(
-        'Assignee must belong to your project squad.',
-      );
-    }
-
     const assignee = await this.userRepository.findOne({
       where: {
         id: assigneeId,
@@ -893,6 +881,35 @@ export class TasksService {
         'Assignee is not an active workspace member.',
       );
     }
+
+    const onProject = (project.members ?? []).some(
+      (membership) => membership.userId === assigneeId,
+    );
+
+    if (!onProject) {
+      throw new BadRequestException(
+        'Assignee must belong to the selected project.',
+      );
+    }
+
+    if (user.role === RegisterAs.ADMIN) {
+      if (assignee.role !== RegisterAs.MANAGER) {
+        throw new BadRequestException('Admins can only assign managers.');
+      }
+      return;
+    }
+
+    if (user.role === RegisterAs.MANAGER) {
+      const assigningSelf = assigneeId === user.sub;
+      if (assignee.role !== RegisterAs.MEMBER && !assigningSelf) {
+        throw new BadRequestException(
+          'Managers can assign workspace members or themselves.',
+        );
+      }
+      return;
+    }
+
+    // Owner cannot create/update task assignees (blocked earlier by canOperateOnTasks).
   }
 
   private async countOrganizationMembersExcludingOwner(organizationId: string) {

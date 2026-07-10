@@ -281,12 +281,19 @@ export class AiService {
       };
     }
 
-    const memberIds = draft.memberIds.filter(
-      (memberId) =>
-        allowedIds.has(memberId) &&
-        memberId !== leadUserId &&
-        memberId !== user.sub,
-    );
+    const memberIds =
+      user.role === RegisterAs.MANAGER
+        ? draft.memberIds.filter(
+            (memberId) =>
+              allowedIds.has(memberId) &&
+              memberId !== leadUserId &&
+              memberId !== user.sub &&
+              membersForPrompt.some(
+                (member) =>
+                  member.id === memberId && member.role === RegisterAs.MEMBER,
+              ),
+          )
+        : [];
 
     if (!leadUserId) {
       const preferred =
@@ -327,12 +334,24 @@ export class AiService {
       dto.projectId,
       { page: 1, limit: 100 },
     );
-    const membersForPrompt = membersPage.data.map((member) => ({
-      id: member.id,
-      name: member.name,
-      email: member.email,
-      role: member.projectRole,
-    }));
+    const membersForPrompt = membersPage.data
+      .filter((member) => {
+        if (user.role === RegisterAs.ADMIN) {
+          return member.role === RegisterAs.MANAGER;
+        }
+        if (user.role === RegisterAs.MANAGER) {
+          return (
+            member.role === RegisterAs.MEMBER || member.id === user.sub
+          );
+        }
+        return true;
+      })
+      .map((member) => ({
+        id: member.id,
+        name: member.name,
+        email: member.email,
+        role: member.role,
+      }));
 
     const prompt = buildPrompt(TASK_DRAFT_PROMPT, {
       language: dto.language,
@@ -357,6 +376,15 @@ export class AiService {
     const allowedIds = new Set(membersForPrompt.map((member) => member.id));
     if (draft.assigneeId && !allowedIds.has(draft.assigneeId)) {
       draft.assigneeId = null;
+    }
+
+    if (!draft.assigneeId && user.role === RegisterAs.ADMIN) {
+      const leadId = project.leadUserId;
+      if (leadId && allowedIds.has(leadId)) {
+        draft.assigneeId = leadId;
+      } else {
+        draft.assigneeId = membersForPrompt[0]?.id ?? null;
+      }
     }
 
     return {

@@ -18,6 +18,8 @@ export type ProjectMemberSummary = {
   email: string;
   avatarColor: string;
   projectRole: ProjectMemberRole;
+  /** Organization workspace role (owner/admin/manager/member). */
+  role: string;
 };
 
 export type WorkspaceProjectResponse = {
@@ -105,6 +107,7 @@ export function mapProjectMemberSummary(
     email: user.email,
     avatarColor: pickAvatarColor(user.fullName),
     projectRole: membership.role,
+    role: user.role,
   };
 }
 
