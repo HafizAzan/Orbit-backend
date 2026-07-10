@@ -6,6 +6,7 @@ export enum ActivityModule {
   ORGANIZATION = 'organization',
   SECURITY = 'security',
   BILLING = 'billing',
+  GITHUB = 'github',
 }
 
 export enum ActivityAction {
@@ -19,10 +20,16 @@ export enum ActivityAction {
   ROLE_CHANGED = 'role_changed',
   EMAIL_CHANGED = 'email_changed',
   REQUESTED = 'requested',
+  PUSHED = 'pushed',
+  OPENED = 'opened',
+  MERGED = 'merged',
+  CLOSED = 'closed',
+  CHECK_COMPLETED = 'check_completed',
 }
 
 export const MANAGER_ACTIVITY_MODULES: ActivityModule[] = [
   ActivityModule.TASKS,
   ActivityModule.PROJECTS,
   ActivityModule.TEAMS,
+  ActivityModule.GITHUB,
 ];

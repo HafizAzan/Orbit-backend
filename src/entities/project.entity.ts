@@ -84,6 +84,22 @@ export class Project {
   @Column({ name: 'created_by_id', type: 'uuid' })
   createdById: string;
 
+  @Column({
+    name: 'github_repo_full_name',
+    type: 'varchar',
+    length: 200,
+    nullable: true,
+  })
+  githubRepoFullName: string | null;
+
+  @Column({
+    name: 'github_webhook_secret',
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+  })
+  githubWebhookSecret: string | null;
+
   @ManyToOne(() => Organization, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'organization_id' })
   organization: Organization;

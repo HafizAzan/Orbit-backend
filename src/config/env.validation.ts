@@ -40,6 +40,13 @@ export const envValidationSchema = Joi.object({
   SENTRY_DSN: Joi.string().uri().allow('').optional(),
   SENTRY_TRACES_SAMPLE_RATE: Joi.number().min(0).max(1).default(0.1),
   LEADS_INBOX_EMAIL: Joi.string().email().optional(),
+  GITHUB_CLIENT_ID: Joi.string().allow('').optional(),
+  GITHUB_CLIENT_SECRET: Joi.string().allow('').optional(),
+  GITHUB_CALLBACK_URL: Joi.string().uri().allow('').optional(),
+  GITHUB_TOKEN: Joi.string().allow('').optional(),
+  GOOGLE_CLIENT_ID: Joi.string().allow('').optional(),
+  GOOGLE_CLIENT_SECRET: Joi.string().allow('').optional(),
+  GOOGLE_CALLBACK_URL: Joi.string().uri().allow('').optional(),
   CORS_ORIGIN: Joi.string()
     .required()
     .custom((value, helpers) => {

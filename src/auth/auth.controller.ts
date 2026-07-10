@@ -3,16 +3,19 @@ import {
   Body,
   Controller,
   Get,
+  HttpException,
   Patch,
   Post,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
+import { randomBytes } from 'crypto';
 import { avatarUploadOptions } from '../common/asset-upload.storage';
 import { getClientIp } from '../common/utils/get-client-ip.util';
 import { AcceptInviteDto } from '../dto/accept-invite.dto';
@@ -74,6 +77,158 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Get('github')
+  startGitHubOAuth(@Res() response: Response) {
+    const state = randomBytes(16).toString('hex');
+    const url = this.authService.getGitHubAuthorizeUrl(state);
+    response.setHeader(
+      'Set-Cookie',
+      `orbit_gh_oauth_state=${state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
+    );
+    return response.redirect(url);
+  }
+
+  @Get('github/callback')
+  async gitHubOAuthCallback(
+    @Query('code') code: string | undefined,
+    @Query('error') error: string | undefined,
+    @Query('state') state: string | undefined,
+    @Req() request: Request,
+    @Res() response: Response,
+  ) {
+    if (error || !code) {
+      return response.redirect(
+        this.authService.buildGitHubFrontendErrorRedirect(
+          error || 'GitHub authorization was cancelled.',
+        ),
+      );
+    }
+
+    const cookieHeader = request.headers.cookie ?? '';
+    const expectedState = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('orbit_gh_oauth_state='))
+      ?.split('=')
+      .slice(1)
+      .join('=');
+
+    if (expectedState && state && expectedState !== state) {
+      return response.redirect(
+        this.authService.buildGitHubFrontendErrorRedirect(
+          'Invalid GitHub OAuth state.',
+        ),
+      );
+    }
+
+    try {
+      const session = await this.authService.loginWithGitHub(code);
+      response.setHeader(
+        'Set-Cookie',
+        'orbit_gh_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0',
+      );
+      return response.redirect(
+        this.authService.buildGitHubFrontendRedirect(session),
+      );
+    } catch (err) {
+      return response.redirect(
+        this.authService.buildGitHubFrontendErrorRedirect(
+          this.resolveOAuthErrorMessage(err, 'GitHub sign-in failed.'),
+        ),
+      );
+    }
+  }
+
+  @Get('google')
+  startGoogleOAuth(@Res() response: Response) {
+    const state = randomBytes(16).toString('hex');
+    const url = this.authService.getGoogleAuthorizeUrl(state);
+    response.setHeader(
+      'Set-Cookie',
+      `orbit_google_oauth_state=${state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
+    );
+    return response.redirect(url);
+  }
+
+  @Get('google/callback')
+  async googleOAuthCallback(
+    @Query('code') code: string | undefined,
+    @Query('error') error: string | undefined,
+    @Query('state') state: string | undefined,
+    @Req() request: Request,
+    @Res() response: Response,
+  ) {
+    if (error || !code) {
+      return response.redirect(
+        this.authService.buildGoogleFrontendErrorRedirect(
+          error || 'Google authorization was cancelled.',
+        ),
+      );
+    }
+
+    const cookieHeader = request.headers.cookie ?? '';
+    const expectedState = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('orbit_google_oauth_state='))
+      ?.split('=')
+      .slice(1)
+      .join('=');
+
+    if (expectedState && state && expectedState !== state) {
+      return response.redirect(
+        this.authService.buildGoogleFrontendErrorRedirect(
+          'Invalid Google OAuth state.',
+        ),
+      );
+    }
+
+    try {
+      const session = await this.authService.loginWithGoogle(code);
+      response.setHeader(
+        'Set-Cookie',
+        'orbit_google_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0',
+      );
+      return response.redirect(
+        this.authService.buildGoogleFrontendRedirect(session),
+      );
+    } catch (err) {
+      return response.redirect(
+        this.authService.buildGoogleFrontendErrorRedirect(
+          this.resolveOAuthErrorMessage(err, 'Google sign-in failed.'),
+        ),
+      );
+    }
+  }
+
+  private resolveOAuthErrorMessage(err: unknown, fallback: string) {
+    if (err instanceof HttpException) {
+      const payload = err.getResponse();
+      if (typeof payload === 'string' && payload.trim()) {
+        return payload;
+      }
+      if (
+        payload &&
+        typeof payload === 'object' &&
+        'message' in payload
+      ) {
+        const message = (payload as { message?: string | string[] }).message;
+        if (Array.isArray(message) && message[0]) {
+          return message[0];
+        }
+        if (typeof message === 'string' && message.trim()) {
+          return message;
+        }
+      }
+    }
+
+    if (err instanceof Error && err.message.trim()) {
+      return err.message;
+    }
+
+    return fallback;
   }
 
   @Post('refresh')
@@ -191,6 +346,18 @@ export class AuthController {
     @Body() dto: UpdateUiThemeDto,
   ) {
     return this.authService.updateUiTheme(user.sub, dto);
+  }
+
+  @Post('me/oauth/github/unlink')
+  @UseGuards(JwtAuthGuard)
+  unlinkGitHub(@CurrentUser() user: JwtPayload) {
+    return this.authService.unlinkGitHub(user.sub);
+  }
+
+  @Post('me/oauth/google/unlink')
+  @UseGuards(JwtAuthGuard)
+  unlinkGoogle(@CurrentUser() user: JwtPayload) {
+    return this.authService.unlinkGoogle(user.sub);
   }
 
   @Post('me/email/initiate')

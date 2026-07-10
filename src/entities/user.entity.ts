@@ -140,6 +140,31 @@ export class User {
   })
   uiTheme: AppUiTheme;
 
+  @Column({ name: 'github_id', type: 'varchar', length: 64, nullable: true, unique: true })
+  githubId: string | null;
+
+  @Column({ name: 'github_login', type: 'varchar', length: 120, nullable: true })
+  githubLogin: string | null;
+
+  @Column({
+    name: 'github_access_token',
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
+  githubAccessToken: string | null;
+
+  @Column({ name: 'google_id', type: 'varchar', length: 64, nullable: true, unique: true })
+  googleId: string | null;
+
+  @Column({
+    name: 'google_access_token',
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
+  googleAccessToken: string | null;
+
   @ManyToOne(() => Organization, (organization) => organization.users, {
     nullable: true,
     onDelete: 'SET NULL',

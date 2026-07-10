@@ -28,6 +28,7 @@ import { AiModule } from './ai/ai.module';
 import { CommonModule } from './common/common.module';
 import { QueueModule } from './queues/queue.module';
 import { LeadsModule } from './leads/leads.module';
+import { GitHubModule } from './github/github.module';
 
 // module decorator
 @Module({
@@ -75,6 +76,7 @@ import { LeadsModule } from './leads/leads.module';
     JobsModule,
     AiModule,
     LeadsModule,
+    GitHubModule,
   ],
   controllers: [AppController],
   providers: [

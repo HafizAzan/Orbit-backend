@@ -56,6 +56,7 @@ export type WorkspaceProjectResponse = {
   >;
   leadUserId: string | null;
   createdById: string;
+  githubRepoFullName: string | null;
   members: ProjectMemberSummary[];
   viewerRole: ProjectMemberRole | 'org_admin' | null;
 };
@@ -174,6 +175,7 @@ export function mapWorkspaceProjectResponse(
     },
     leadUserId: project.leadUserId,
     createdById: project.createdById,
+    githubRepoFullName: project.githubRepoFullName ?? null,
     members,
     viewerRole,
   };

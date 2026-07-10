@@ -49,6 +49,11 @@ const ACTION_VERB_LABELS: Record<ActivityAction, string> = {
   [ActivityAction.ROLE_CHANGED]: 'changed role for',
   [ActivityAction.EMAIL_CHANGED]: 'updated email for',
   [ActivityAction.REQUESTED]: 'requested',
+  [ActivityAction.PUSHED]: 'pushed to',
+  [ActivityAction.OPENED]: 'opened',
+  [ActivityAction.MERGED]: 'merged',
+  [ActivityAction.CLOSED]: 'closed',
+  [ActivityAction.CHECK_COMPLETED]: 'completed check for',
 };
 
 function resolveAvatarColor(actorId: string) {

@@ -12,6 +12,7 @@ import { Task } from '../entities/task.entity';
 import { User } from '../entities/user.entity';
 import { ActivityModule } from '../activity/activity.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { GitHubModule } from '../github/github.module';
 import { ProjectCommentsService } from './project-comments.service';
 import { ProjectsController } from './projects.controller';
 import { ProjectsService } from './projects.service';
@@ -32,6 +33,7 @@ import { ProjectsService } from './projects.service';
     OrganizationGuardsModule,
     forwardRef(() => ActivityModule),
     NotificationsModule,
+    forwardRef(() => GitHubModule),
   ],
   controllers: [ProjectsController],
   providers: [ProjectsService, ProjectCommentsService],

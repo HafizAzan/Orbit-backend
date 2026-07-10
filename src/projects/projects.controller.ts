@@ -23,12 +23,14 @@ import {
   UpdateMyProjectThemeDto,
 } from './dto/project.dto';
 import { CreateProjectCommentDto } from './dto/project-comment.dto';
+import { UpdateProjectGitHubDto } from './dto/project-github.dto';
 import {
   ListAssignableMembersQueryDto,
   ListProjectCommentsQueryDto,
   ListProjectMembersQueryDto,
 } from './dto/project-list-query.dto';
 import { listProjectThemes } from '../common/mappers/project-theme.mapper';
+import { GitHubIntegrationService } from '../github/github-integration.service';
 import { ProjectCommentsService } from './project-comments.service';
 import { ProjectsService } from './projects.service';
 
@@ -38,6 +40,7 @@ export class ProjectsController {
   constructor(
     private readonly projectsService: ProjectsService,
     private readonly projectCommentsService: ProjectCommentsService,
+    private readonly githubIntegrationService: GitHubIntegrationService,
   ) {}
 
   @Get()
@@ -67,6 +70,28 @@ export class ProjectsController {
     @Param('projectId') projectId: string,
   ) {
     return this.projectsService.getProject(user, projectId);
+  }
+
+  @Patch(':projectId/github')
+  updateProjectGitHub(
+    @CurrentUser() user: JwtPayload,
+    @Param('projectId') projectId: string,
+    @Body() dto: UpdateProjectGitHubDto,
+  ) {
+    return this.githubIntegrationService.linkProjectRepo(
+      user,
+      projectId,
+      dto.unlink ? null : dto.repoFullName,
+      dto.unlink,
+    );
+  }
+
+  @Get(':projectId/github/status')
+  getProjectGitHubStatus(
+    @CurrentUser() user: JwtPayload,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.githubIntegrationService.getProjectStatus(user, projectId);
   }
 
   @Post()

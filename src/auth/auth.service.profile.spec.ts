@@ -23,6 +23,8 @@ describe('AuthService changePassword', () => {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
+    {} as never,
     userRepository as never,
     {} as never,
     {} as never,

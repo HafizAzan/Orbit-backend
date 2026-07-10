@@ -61,6 +61,8 @@ import {
 } from './dto/two-factor.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUiThemeDto } from './dto/update-ui-theme.dto';
+import { GitHubOAuthService } from './github-oauth.service';
+import { GoogleOAuthService } from './google-oauth.service';
 import type { JwtPayload } from './jwt/jwt-payload.type';
 import { RegisterRateLimitService } from './rate-limit/register-rate-limit.service';
 import {
@@ -95,6 +97,10 @@ export type AuthUserResponse = {
   uiTheme: string;
   twoFactorEnabled: boolean;
   avatarUrl: string | null;
+  authProvider: AuthProvider;
+  githubConnected: boolean;
+  googleConnected: boolean;
+  githubLogin: string | null;
 };
 
 export type AuthTwoFactorChallengeResponse = {
@@ -156,6 +162,8 @@ export class AuthService {
     private readonly registerRateLimitService: RegisterRateLimitService,
     private readonly emailService: EmailService,
     private readonly organizationsService: OrganizationsService,
+    private readonly githubOAuthService: GitHubOAuthService,
+    private readonly googleOAuthService: GoogleOAuthService,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     @InjectRepository(Organization)
@@ -470,6 +478,334 @@ export class AuthService {
       ...this.issueAuthTokens(user, remember, workspaceSettings),
       user: await this.toAuthUserResponse(user, user.organization),
     };
+  }
+
+  getGitHubAuthorizeUrl(state: string) {
+    return this.githubOAuthService.getAuthorizeUrl(state);
+  }
+
+  async loginWithGitHub(code: string): Promise<AuthSessionResponse> {
+    const profile = await this.githubOAuthService.exchangeCode(code);
+    let user = await this.userRepository.findOne({
+      where: { githubId: profile.id },
+      relations: { organization: true },
+    });
+
+    if (!user) {
+      user = await this.userRepository.findOne({
+        where: { email: profile.email },
+        relations: { organization: true },
+      });
+    }
+
+    if (user) {
+      if (user.accountStatus === AccountStatus.SUSPENDED) {
+        throw new UnauthorizedException('Your account has been suspended.');
+      }
+
+      if (user.authProvider === AuthProvider.GOOGLE) {
+        throw new ConflictException(
+          'This account uses Google sign-in. Disconnect Google from Profile → Security if you want to switch to GitHub.',
+        );
+      }
+
+      user.githubId = profile.id;
+      user.githubLogin = profile.login;
+      user.githubAccessToken = profile.accessToken;
+      if (!user.avatarUrl && profile.avatarUrl) {
+        user.avatarUrl = profile.avatarUrl;
+      }
+      if (user.authProvider === AuthProvider.EMAIL) {
+        user.authProvider = AuthProvider.GITHUB;
+      }
+      user.emailVerificationStatus = EmailVerificationStatus.VERIFIED;
+      if (user.accountStatus === AccountStatus.PENDING) {
+        user.accountStatus = AccountStatus.ACTIVE;
+      }
+      user.lastActiveAt = new Date();
+      await this.userRepository.save(user);
+    } else {
+      const slugBase = profile.login
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 40);
+      const organizationSlug = await this.ensureUniqueOrgSlug(
+        slugBase || `gh-${profile.id}`,
+      );
+      const organizationName = `${profile.name || profile.login}'s Workspace`.slice(
+        0,
+        50,
+      );
+
+      const organization = await this.organizationRepository.save(
+        this.organizationRepository.create({
+          name: organizationName,
+          slug: organizationSlug,
+          status: OrganizationStatus.TRIAL,
+          billingEmail: profile.email,
+          projectCount: 0,
+        }),
+      );
+
+      const createdUser = this.userRepository.create({
+        fullName: (profile.name || profile.login).slice(0, 120),
+        email: profile.email,
+        passwordHash: null,
+        authProvider: AuthProvider.GITHUB,
+        signupSource: SignupSource.DIRECT,
+        role: RegisterAs.OWNER,
+        emailVerificationStatus: EmailVerificationStatus.VERIFIED,
+        accountStatus: AccountStatus.ACTIVE,
+        isPlatformAdmin: false,
+        organizationId: organization.id,
+        avatarUrl: profile.avatarUrl ?? null,
+        githubId: profile.id,
+        githubLogin: profile.login,
+        githubAccessToken: profile.accessToken,
+        lastActiveAt: new Date(),
+      });
+      user = await this.userRepository.save(createdUser);
+      user.organization = organization;
+
+      await this.organizationsService.createDefaultSubscriptionForOrganization(
+        organization.id,
+        profile.email,
+      );
+    }
+
+    const authenticatedUser = user;
+    const workspaceSettings = await this.getOrganizationWorkspaceSettings(
+      authenticatedUser.organizationId,
+    );
+
+    return {
+      message: `Welcome, ${authenticatedUser.fullName}.`,
+      ...this.issueAuthTokens(authenticatedUser, true, workspaceSettings),
+      user: await this.toAuthUserResponse(
+        authenticatedUser,
+        authenticatedUser.organization,
+      ),
+    };
+  }
+
+  buildGitHubFrontendRedirect(session: AuthSessionResponse) {
+    const frontendUrl = this.configService.get<string>(
+      'FRONTEND_URL',
+      'http://localhost:5173',
+    );
+    const params = new URLSearchParams({
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      remember: '1',
+    });
+    return `${frontendUrl.replace(/\/$/, '')}/auth/github/callback?${params.toString()}`;
+  }
+
+  buildGitHubFrontendErrorRedirect(message: string) {
+    const frontendUrl = this.configService.get<string>(
+      'FRONTEND_URL',
+      'http://localhost:5173',
+    );
+    const params = new URLSearchParams({ error: message });
+    return `${frontendUrl.replace(/\/$/, '')}/login?${params.toString()}`;
+  }
+
+  getGoogleAuthorizeUrl(state: string) {
+    return this.googleOAuthService.getAuthorizeUrl(state);
+  }
+
+  async loginWithGoogle(code: string): Promise<AuthSessionResponse> {
+    const profile = await this.googleOAuthService.exchangeCode(code);
+    let user = await this.userRepository.findOne({
+      where: { googleId: profile.id },
+      relations: { organization: true },
+    });
+
+    if (!user) {
+      user = await this.userRepository.findOne({
+        where: { email: profile.email },
+        relations: { organization: true },
+      });
+    }
+
+    if (user) {
+      if (user.accountStatus === AccountStatus.SUSPENDED) {
+        throw new UnauthorizedException('Your account has been suspended.');
+      }
+
+      if (user.authProvider === AuthProvider.GITHUB) {
+        throw new ConflictException(
+          'This account uses GitHub sign-in. Disconnect GitHub from Profile → Security if you want to switch to Google.',
+        );
+      }
+
+      user.googleId = profile.id;
+      user.googleAccessToken = profile.accessToken;
+      if (!user.avatarUrl && profile.avatarUrl) {
+        user.avatarUrl = profile.avatarUrl;
+      }
+      if (user.authProvider === AuthProvider.EMAIL) {
+        user.authProvider = AuthProvider.GOOGLE;
+      }
+      user.emailVerificationStatus = EmailVerificationStatus.VERIFIED;
+      if (user.accountStatus === AccountStatus.PENDING) {
+        user.accountStatus = AccountStatus.ACTIVE;
+      }
+      user.lastActiveAt = new Date();
+      await this.userRepository.save(user);
+    } else {
+      const emailLocal = profile.email.split('@')[0] ?? `g-${profile.id}`;
+      const slugBase = emailLocal
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 40);
+      const organizationSlug = await this.ensureUniqueOrgSlug(
+        slugBase || `g-${profile.id.slice(0, 12)}`,
+      );
+      const displayName = profile.name || emailLocal;
+      const organizationName = `${displayName}'s Workspace`.slice(0, 50);
+
+      const organization = await this.organizationRepository.save(
+        this.organizationRepository.create({
+          name: organizationName,
+          slug: organizationSlug,
+          status: OrganizationStatus.TRIAL,
+          billingEmail: profile.email,
+          projectCount: 0,
+        }),
+      );
+
+      const createdUser = this.userRepository.create({
+        fullName: displayName.slice(0, 120),
+        email: profile.email,
+        passwordHash: null,
+        authProvider: AuthProvider.GOOGLE,
+        signupSource: SignupSource.DIRECT,
+        role: RegisterAs.OWNER,
+        emailVerificationStatus: EmailVerificationStatus.VERIFIED,
+        accountStatus: AccountStatus.ACTIVE,
+        isPlatformAdmin: false,
+        organizationId: organization.id,
+        avatarUrl: profile.avatarUrl ?? null,
+        googleId: profile.id,
+        googleAccessToken: profile.accessToken,
+        lastActiveAt: new Date(),
+      });
+      user = await this.userRepository.save(createdUser);
+      user.organization = organization;
+
+      await this.organizationsService.createDefaultSubscriptionForOrganization(
+        organization.id,
+        profile.email,
+      );
+    }
+
+    const authenticatedUser = user;
+    const workspaceSettings = await this.getOrganizationWorkspaceSettings(
+      authenticatedUser.organizationId,
+    );
+
+    return {
+      message: `Welcome, ${authenticatedUser.fullName}.`,
+      ...this.issueAuthTokens(authenticatedUser, true, workspaceSettings),
+      user: await this.toAuthUserResponse(
+        authenticatedUser,
+        authenticatedUser.organization,
+      ),
+    };
+  }
+
+  buildGoogleFrontendRedirect(session: AuthSessionResponse) {
+    const frontendUrl = this.configService.get<string>(
+      'FRONTEND_URL',
+      'http://localhost:5173',
+    );
+    const params = new URLSearchParams({
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      remember: '1',
+    });
+    return `${frontendUrl.replace(/\/$/, '')}/auth/google/callback?${params.toString()}`;
+  }
+
+  buildGoogleFrontendErrorRedirect(message: string) {
+    const frontendUrl = this.configService.get<string>(
+      'FRONTEND_URL',
+      'http://localhost:5173',
+    );
+    const params = new URLSearchParams({ error: message });
+    return `${frontendUrl.replace(/\/$/, '')}/login?${params.toString()}`;
+  }
+
+  async unlinkGitHub(userId: string): Promise<AuthUserResponse> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: { organization: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    if (!user.githubId) {
+      throw new BadRequestException('GitHub is not connected to this account.');
+    }
+
+    user.githubId = null;
+    user.githubLogin = null;
+    user.githubAccessToken = null;
+
+    if (user.authProvider === AuthProvider.GITHUB) {
+      user.authProvider = user.googleId
+        ? AuthProvider.GOOGLE
+        : AuthProvider.EMAIL;
+    }
+
+    await this.userRepository.save(user);
+    return this.toAuthUserResponse(user, user.organization);
+  }
+
+  async unlinkGoogle(userId: string): Promise<AuthUserResponse> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: { organization: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    if (!user.googleId) {
+      throw new BadRequestException('Google is not connected to this account.');
+    }
+
+    user.googleId = null;
+    user.googleAccessToken = null;
+
+    if (user.authProvider === AuthProvider.GOOGLE) {
+      user.authProvider = user.githubId
+        ? AuthProvider.GITHUB
+        : AuthProvider.EMAIL;
+    }
+
+    await this.userRepository.save(user);
+    return this.toAuthUserResponse(user, user.organization);
+  }
+
+  private async ensureUniqueOrgSlug(base: string) {
+    let candidate = base;
+    let attempt = 0;
+    while (
+      await this.organizationRepository.findOne({ where: { slug: candidate } })
+    ) {
+      attempt += 1;
+      candidate = `${base}-${attempt}`.slice(0, 50);
+    }
+    return candidate;
   }
 
   async verifyTwoFactorChallenge(
@@ -1616,6 +1952,10 @@ export class AuthService {
       uiTheme: normalizeAppUiTheme(user.uiTheme),
       twoFactorEnabled: user.twoFactorEnabled,
       avatarUrl: user.avatarUrl ?? null,
+      authProvider: user.authProvider,
+      githubConnected: Boolean(user.githubId),
+      googleConnected: Boolean(user.googleId),
+      githubLogin: user.githubLogin ?? null,
     };
   }
 }

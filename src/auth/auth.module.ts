@@ -14,6 +14,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { GitHubOAuthService } from './github-oauth.service';
+import { GoogleOAuthService } from './google-oauth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { OrganizationBillingGuard } from './guards/organization-billing.guard';
 import { PlatformAdminGuard } from './guards/platform-admin.guard';
@@ -63,6 +65,8 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
   controllers: [AuthController],
   providers: [
     AuthService,
+    GitHubOAuthService,
+    GoogleOAuthService,
     JwtStrategy,
     JwtAuthGuard,
     OrganizationGuardsModule,
@@ -80,6 +84,8 @@ import { RegisterRateLimitService } from './rate-limit/register-rate-limit.servi
     OrganizationGuardsModule,
     OrganizationBillingGuard,
     PlatformAdminGuard,
+    GitHubOAuthService,
+    GoogleOAuthService,
   ],
 })
 export class AuthModule {}
