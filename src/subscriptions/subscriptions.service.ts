@@ -1,12 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import {
   buildPaginatedResponse,
   resolvePagination,
   type PaginatedResponse,
 } from '../common/dto/pagination-query.dto';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import {
   amountToCents,
   buildCountStatMetric,
@@ -26,7 +25,10 @@ import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
 import { RegisterAs } from '../enum/auth.enum';
 import { PlanCode, SubscriptionStatus } from '../enum/billing.enum';
-import { UpdateSubscriptionBillingDto } from './dto/subscription.dto';
+import {
+  ListSubscriptionsQueryDto,
+  UpdateSubscriptionBillingDto,
+} from './dto/subscription.dto';
 
 @Injectable()
 export class SubscriptionsService {
@@ -40,11 +42,12 @@ export class SubscriptionsService {
   ) {}
 
   async findAll(
-    query: PaginationQueryDto = {},
+    query: ListSubscriptionsQueryDto = {},
   ): Promise<PaginatedResponse<SubscriptionResponse>> {
     const { page, limit, skip, take } = resolvePagination(query);
     const [subscriptions, total] =
       await this.subscriptionRepository.findAndCount({
+        where: query.status ? { status: query.status } : undefined,
         relations: { organization: true },
         order: { createdAt: 'DESC' },
         skip,
@@ -108,6 +111,29 @@ export class SubscriptionsService {
         percentage: Math.round((count / total) * 100),
       };
     });
+  }
+
+  async getRevenueSeries(): Promise<Array<{ month: string; revenue: number }>> {
+    const subscriptions = await this.subscriptionRepository.find({
+      where: { status: SubscriptionStatus.ACTIVE },
+    });
+
+    const now = new Date();
+    const points: Array<{ month: string; revenue: number }> = [];
+
+    for (let i = 11; i >= 0; i -= 1) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthLabel = date.toLocaleString('en-US', { month: 'short' });
+      const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
+      const revenue = subscriptions
+        .filter((item) => item.createdAt <= monthEnd)
+        .reduce((sum, item) => sum + item.amountCents / 100, 0);
+
+      points.push({ month: monthLabel, revenue: Math.round(revenue) });
+    }
+
+    return points;
   }
 
   async updateBilling(

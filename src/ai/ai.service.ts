@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ActivityService } from '../activity/activity.service';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
+import { BillingService } from '../billing/billing.service';
 import { RegisterAs } from '../enum/auth.enum';
 import { TaskPriority, TaskStatus } from '../enum/task.enum';
 import { Project } from '../entities/project.entity';
@@ -91,6 +92,7 @@ export class AiService {
   constructor(
     private readonly cursorProvider: CursorProvider,
     private readonly contentModerationService: ContentModerationService,
+    private readonly billingService: BillingService,
     private readonly projectsService: ProjectsService,
     private readonly tasksService: TasksService,
     private readonly activityService: ActivityService,
@@ -102,8 +104,20 @@ export class AiService {
     private readonly taskRepository: Repository<Task>,
   ) {}
 
+  private async consumeWorkspaceAiCredit(user: JwtPayload, feature: string) {
+    if (!user.organizationId) {
+      throw new ForbiddenException('Organization membership is required.');
+    }
+
+    await this.billingService.consumeAiCredit(user.organizationId, {
+      userId: user.sub,
+      feature,
+    });
+  }
+
   async generateWorkBreakdown(user: JwtPayload, dto: GenerateWorkBreakdownDto) {
     this.ensureWorkBreakdownAccess(user);
+    await this.consumeWorkspaceAiCredit(user, 'work-breakdown');
     await this.contentModerationService.assertCleanContent(user.sub, {
       requirement: dto.requirement,
     });
@@ -135,6 +149,7 @@ export class AiService {
 
   async generateProjectSummary(user: JwtPayload, dto: GenerateProjectSummaryDto) {
     this.ensureProjectToolsAccess(user);
+    await this.consumeWorkspaceAiCredit(user, 'project-summary');
 
     const [organization, project] = await Promise.all([
       this.getOrganization(user.organizationId!),
@@ -221,6 +236,7 @@ export class AiService {
 
   async generateProjectDraft(user: JwtPayload, dto: GenerateProjectDraftDto) {
     this.ensureProjectToolsAccess(user);
+    await this.consumeWorkspaceAiCredit(user, 'project-draft');
     await this.contentModerationService.assertCleanContent(user.sub, {
       notes: dto.notes,
     });
@@ -319,6 +335,7 @@ export class AiService {
 
   async generateTaskDraft(user: JwtPayload, dto: GenerateTaskDraftDto) {
     this.ensureTaskDraftAccess(user);
+    await this.consumeWorkspaceAiCredit(user, 'task-draft');
     await this.contentModerationService.assertCleanContent(user.sub, {
       notes: dto.notes,
       taskTitle: dto.taskTitle,
@@ -395,6 +412,7 @@ export class AiService {
 
   async describeActivity(user: JwtPayload, dto: DescribeActivityDto) {
     this.ensureActivityDescribeAccess(user);
+    await this.consumeWorkspaceAiCredit(user, 'describe-activity');
 
     const [organization, event] = await Promise.all([
       this.getOrganization(user.organizationId!),
@@ -442,6 +460,7 @@ export class AiService {
     if (!user.organizationId) {
       throw new ForbiddenException('Organization membership is required.');
     }
+    await this.consumeWorkspaceAiCredit(user, 'task-tip');
 
     const [organization, task] = await Promise.all([
       this.getOrganization(user.organizationId),
@@ -508,6 +527,7 @@ export class AiService {
     dto: GenerateMembershipImpactDto,
   ) {
     this.ensureActivityDescribeAccess(user);
+    await this.consumeWorkspaceAiCredit(user, 'membership-impact');
     await this.contentModerationService.assertCleanContent(user.sub, {
       changeContext: dto.changeContext,
     });
@@ -534,6 +554,7 @@ export class AiService {
 
   async generateCalendarDraft(user: JwtPayload, dto: GenerateCalendarDraftDto) {
     this.ensureProjectToolsAccess(user);
+    await this.consumeWorkspaceAiCredit(user, 'calendar-draft');
     await this.contentModerationService.assertCleanContent(user.sub, {
       notes: dto.notes,
       preferredTitle: dto.preferredTitle,
@@ -566,6 +587,7 @@ export class AiService {
 
   async askWorkspace(user: JwtPayload, dto: AskWorkspaceDto) {
     this.ensureProjectToolsAccess(user);
+    await this.consumeWorkspaceAiCredit(user, 'ask-workspace');
     await this.contentModerationService.assertCleanContent(user.sub, {
       question: dto.question,
     });

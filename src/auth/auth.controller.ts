@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -6,9 +7,13 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
+import { avatarUploadOptions } from '../common/asset-upload.storage';
 import { getClientIp } from '../common/utils/get-client-ip.util';
 import { AcceptInviteDto } from '../dto/accept-invite.dto';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto';
@@ -155,6 +160,19 @@ export class AuthController {
     @Body() dto: UpdateProfileDto,
   ) {
     return this.authService.updateProfile(user.sub, dto);
+  }
+
+  @Post('me/avatar')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file', avatarUploadOptions))
+  updateAvatar(
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Avatar file is required.');
+    }
+    return this.authService.updateAvatar(user.sub, file);
   }
 
   @Patch('me/password')

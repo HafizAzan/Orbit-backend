@@ -4,15 +4,21 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ActivityModule } from '../activity/activity.module';
 import { AuthModule } from '../auth/auth.module';
 import { OrganizationGuardsModule } from '../auth/organization-guards.module';
+import { BillingModule } from '../billing/billing.module';
+import { ActivityEvent } from '../entities/activity-event.entity';
 import { Organization } from '../entities/organization.entity';
 import { Project } from '../entities/project.entity';
+import { Subscription } from '../entities/subscription.entity';
 import { Task } from '../entities/task.entity';
+import { User } from '../entities/user.entity';
 import { ProjectsModule } from '../projects/projects.module';
 import { QUEUE_ENABLED } from '../queues/queue-enabled.token';
 import { AI_QUEUE } from '../queues/queue.constants';
 import { AiQueueService } from '../queues/ai-queue.service';
 import { AiQueueProcessor } from '../queues/processors/ai.processor';
 import { TasksModule } from '../tasks/tasks.module';
+import { AdminAiController } from './admin-ai.controller';
+import { AdminAiService } from './admin-ai.service';
 import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
 import { CursorProvider } from './providers/cursor.provider';
@@ -41,15 +47,23 @@ const aiQueueProviders: Provider[] = queueEnabled
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Organization, Project, Task]),
+    TypeOrmModule.forFeature([
+      Organization,
+      Project,
+      Task,
+      User,
+      Subscription,
+      ActivityEvent,
+    ]),
     OrganizationGuardsModule,
+    forwardRef(() => BillingModule),
     forwardRef(() => AuthModule),
     forwardRef(() => ProjectsModule),
     forwardRef(() => TasksModule),
     forwardRef(() => ActivityModule),
   ],
-  controllers: [AiController],
-  providers: [AiService, CursorProvider, ...aiQueueProviders],
-  exports: [AiService, CursorProvider],
+  controllers: [AiController, AdminAiController],
+  providers: [AiService, AdminAiService, CursorProvider, ...aiQueueProviders],
+  exports: [AiService, AdminAiService, CursorProvider],
 })
 export class AiModule {}

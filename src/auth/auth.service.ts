@@ -17,6 +17,7 @@ import * as argon2 from 'argon2';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { normalizeAppUiTheme } from '../common/theme-normalize.util';
+import { buildAvatarAssetUrl } from '../common/asset-upload.storage';
 import { DEFAULT_ORGANIZATION_WORKSPACE_SETTINGS } from '../common/types/organization-workspace-settings.type';
 import {
   canChangeOwnEmail,
@@ -93,6 +94,7 @@ export type AuthUserResponse = {
   organizationAwaitingSubscription: boolean;
   uiTheme: string;
   twoFactorEnabled: boolean;
+  avatarUrl: string | null;
 };
 
 export type AuthTwoFactorChallengeResponse = {
@@ -175,7 +177,27 @@ export class AuthService {
     const organizationSlug = dto.organizationSlug.trim().toLowerCase();
 
     if (dto.signupSource === SignupSource.INVITE) {
-      throw new BadRequestException('Invite signup is not implemented yet.');
+      if (!dto.inviteToken?.trim()) {
+        throw new BadRequestException(
+          'Invite token is required for invited signups.',
+        );
+      }
+
+      const invite = await this.validateInviteToken(dto.inviteToken.trim());
+      if (invite.email.trim().toLowerCase() !== email) {
+        throw new BadRequestException(
+          'This invitation was sent to a different email address.',
+        );
+      }
+
+      return {
+        message:
+          'Invitation verified. Continue on the accept-invite page to set your password and join the workspace.',
+        email,
+        requiresAcceptInvite: true,
+        inviteToken: dto.inviteToken.trim(),
+        organizationName: invite.organizationName,
+      };
     }
 
     if (dto.kindOfUser === RegisterAs.SUPER_ADMIN) {
@@ -714,6 +736,25 @@ export class AuthService {
     }
 
     user.fullName = dto.fullName;
+    await this.userRepository.save(user);
+
+    return this.toAuthUserResponse(user, user.organization);
+  }
+
+  async updateAvatar(
+    userId: string,
+    file: Express.Multer.File,
+  ): Promise<AuthUserResponse> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: { organization: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    user.avatarUrl = buildAvatarAssetUrl(file.filename);
     await this.userRepository.save(user);
 
     return this.toAuthUserResponse(user, user.organization);
@@ -1574,6 +1615,7 @@ export class AuthService {
         await this.resolveOrganizationAwaitingSubscription(user),
       uiTheme: normalizeAppUiTheme(user.uiTheme),
       twoFactorEnabled: user.twoFactorEnabled,
+      avatarUrl: user.avatarUrl ?? null,
     };
   }
 }

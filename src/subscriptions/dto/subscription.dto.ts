@@ -7,11 +7,18 @@ import {
   IsOptional,
   Min,
 } from 'class-validator';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import {
   BillingCycle,
   PlanCode,
   SubscriptionStatus,
 } from '../../enum/billing.enum';
+
+export class ListSubscriptionsQueryDto extends PaginationQueryDto {
+  @IsOptional()
+  @IsEnum(SubscriptionStatus)
+  status?: SubscriptionStatus;
+}
 
 export class UpdateSubscriptionBillingDto {
   @IsOptional()

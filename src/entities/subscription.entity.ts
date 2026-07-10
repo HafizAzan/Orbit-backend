@@ -101,6 +101,17 @@ export class Subscription {
   @Column({ name: 'plan_selected_at', type: 'timestamptz', nullable: true })
   planSelectedAt: Date | null;
 
+  @Column({ name: 'ai_credits_used', type: 'integer', default: 0 })
+  aiCreditsUsed: number;
+
+  @Column({
+    name: 'ai_credits_period_key',
+    type: 'varchar',
+    length: 16,
+    nullable: true,
+  })
+  aiCreditsPeriodKey: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

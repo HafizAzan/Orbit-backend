@@ -204,6 +204,45 @@ export class EmailService {
     });
   }
 
+  async sendContactLeadNotification(params: {
+    fullName: string;
+    email: string;
+    companyName: string | null;
+    subject: string;
+    message: string;
+    source: string;
+  }): Promise<void> {
+    const inbox =
+      this.configService.get<string>('LEADS_INBOX_EMAIL') ??
+      this.configService.get<string>('SMTP_USER');
+
+    if (!inbox) {
+      this.logger.warn('No LEADS_INBOX_EMAIL/SMTP_USER configured for lead alerts.');
+      return;
+    }
+
+    const safe = (value: string) =>
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+    await this.sendEmail({
+      to: inbox.trim().toLowerCase(),
+      subject: `[Orbit lead] ${params.subject} — ${params.fullName}`,
+      html: `
+        <h2>New ${safe(params.source)} lead</h2>
+        <p><strong>Name:</strong> ${safe(params.fullName)}</p>
+        <p><strong>Email:</strong> ${safe(params.email)}</p>
+        <p><strong>Company:</strong> ${safe(params.companyName ?? '—')}</p>
+        <p><strong>Subject:</strong> ${safe(params.subject)}</p>
+        <p><strong>Message:</strong></p>
+        <p>${safe(params.message).replace(/\n/g, '<br/>')}</p>
+      `,
+      failureMessage: 'Unable to send lead notification email.',
+    });
+  }
+
   private getSmtpPassword() {
     const pass =
       this.configService.get<string>('SMTP_PASSWORD') ??

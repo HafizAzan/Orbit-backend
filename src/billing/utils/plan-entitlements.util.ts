@@ -18,11 +18,16 @@ export const PLAN_FEATURE_FLAGS = [
   'custom_roles',
   'dedicated_success',
   'custom_sla',
+  'ai_assistant',
 ] as const;
 
 export type PlanFeatureFlag = (typeof PLAN_FEATURE_FLAGS)[number];
 
-export type PlanLimitKey = 'max_staff_users' | 'max_projects' | 'max_boards';
+export type PlanLimitKey =
+  | 'max_staff_users'
+  | 'max_projects'
+  | 'max_boards'
+  | 'max_ai_credits';
 
 export type PlanLimits = Record<PlanLimitKey, number | null>;
 
@@ -43,12 +48,27 @@ const FALLBACK_SEAT_LIMITS: Record<PlanCode, number> = {
   [PlanCode.ENTERPRISE]: 1000,
 };
 
+const FALLBACK_PROJECT_BOARD_LIMITS: Record<PlanCode, number> = {
+  [PlanCode.FREE]: 500,
+  [PlanCode.PRO]: 1500,
+  [PlanCode.BUSINESS]: 3000,
+  [PlanCode.ENTERPRISE]: 8000,
+};
+
+const FALLBACK_AI_CREDIT_LIMITS: Record<PlanCode, number> = {
+  [PlanCode.FREE]: 500,
+  [PlanCode.PRO]: 2000,
+  [PlanCode.BUSINESS]: 5000,
+  [PlanCode.ENTERPRISE]: 10000,
+};
+
 const FALLBACK_FEATURE_FLAGS: Record<PlanCode, PlanFeatureFlag[]> = {
   [PlanCode.FREE]: [
     'projects',
     'boards',
     'tasks',
     'basic_reporting',
+    'ai_assistant',
   ],
   [PlanCode.PRO]: [
     'projects',
@@ -59,6 +79,7 @@ const FALLBACK_FEATURE_FLAGS: Record<PlanCode, PlanFeatureFlag[]> = {
     'team_dashboards',
     'reports',
     'priority_support',
+    'ai_assistant',
   ],
   [PlanCode.BUSINESS]: [
     'projects',
@@ -72,6 +93,7 @@ const FALLBACK_FEATURE_FLAGS: Record<PlanCode, PlanFeatureFlag[]> = {
     'advanced_permissions',
     'workload_reports',
     'priority_support',
+    'ai_assistant',
   ],
   [PlanCode.ENTERPRISE]: [
     'projects',
@@ -90,6 +112,7 @@ const FALLBACK_FEATURE_FLAGS: Record<PlanCode, PlanFeatureFlag[]> = {
     'custom_roles',
     'dedicated_success',
     'custom_sla',
+    'ai_assistant',
   ],
 };
 
@@ -155,16 +178,30 @@ export function resolvePlanLimits(
 
   const maxProjects =
     parseLimitValue(metadata.max_projects) ??
-    // Marketing copy often says unlimited projects when key is absent.
-    -1;
+    FALLBACK_PROJECT_BOARD_LIMITS[plan];
 
-  const maxBoards = parseLimitValue(metadata.max_boards) ?? -1;
+  const maxBoards =
+    parseLimitValue(metadata.max_boards) ??
+    parseLimitValue(metadata.max_projects) ??
+    FALLBACK_PROJECT_BOARD_LIMITS[plan];
+
+  const maxAiCredits =
+    parseLimitValue(metadata.ai_credits_monthly) ??
+    parseLimitValue(metadata.max_ai_credits) ??
+    FALLBACK_AI_CREDIT_LIMITS[plan];
 
   return {
     max_staff_users: maxStaffUsers,
     max_projects: maxProjects,
     max_boards: maxBoards,
+    max_ai_credits: maxAiCredits,
   };
+}
+
+export function currentAiCreditsPeriodKey(date = new Date()) {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
 }
 
 export function hasPlanFeature(

@@ -6,6 +6,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { initSentry } from './common/sentry';
 import { TASK_UPLOADS_ROOT } from './tasks/task-attachment.storage';
 
 function parseCorsOrigins(value: string): string[] {
@@ -21,6 +22,7 @@ async function bootstrap() {
   });
 
   const configService = app.get(ConfigService);
+  await initSentry(configService);
   const port = configService.get<number>('PORT', 5000);
   const corsOrigins = parseCorsOrigins(
     configService.get<string>('CORS_ORIGIN', ''),

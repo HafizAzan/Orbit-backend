@@ -17,6 +17,7 @@ function actor(role: RegisterAs, sub = 'user-1'): JwtPayload {
     email: 'user@example.com',
     role,
     organizationId: 'org-1',
+    isPlatformAdmin: false,
   };
 }
 

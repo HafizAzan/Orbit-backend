@@ -50,6 +50,19 @@ export class BillingController {
     return this.billingService.getOrganizationUsage(user);
   }
 
+  @Get('ai-credits/history')
+  @UseGuards(JwtAuthGuard, OrganizationMemberGuard)
+  listAiCreditHistory(
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limit?: string,
+  ) {
+    const parsed = limit ? Number(limit) : 20;
+    return this.billingService.listAiCreditHistory(
+      user,
+      Number.isFinite(parsed) ? parsed : 20,
+    );
+  }
+
   @Post('checkout')
   @UseGuards(JwtAuthGuard, OrganizationBillingGuard)
   createCheckout(

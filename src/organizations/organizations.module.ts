@@ -8,6 +8,7 @@ import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
 import { ProjectsModule } from '../projects/projects.module';
 import { ActivityModule } from '../activity/activity.module';
+import { EmailModule } from '../email/email.module';
 import { OrganizationsController } from './organizations.controller';
 import { WorkspaceOrganizationsController } from './workspace-organizations.controller';
 import { OrganizationsService } from './organizations.service';
@@ -20,6 +21,7 @@ import { OrganizationsService } from './organizations.service';
     OrganizationGuardsModule,
     forwardRef(() => ProjectsModule),
     ActivityModule,
+    EmailModule,
   ],
   controllers: [OrganizationsController, WorkspaceOrganizationsController],
   providers: [OrganizationsService],

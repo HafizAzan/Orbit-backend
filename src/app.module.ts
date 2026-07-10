@@ -13,6 +13,7 @@ import databaseConfig, {
 import { envValidationSchema } from './config/env.validation';
 import { AuthModule } from './auth/auth.module';
 import { OrganizationGuardsModule } from './auth/organization-guards.module';
+import { AdminModule } from './admin/admin.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { BillingModule } from './billing/billing.module';
@@ -26,6 +27,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { AiModule } from './ai/ai.module';
 import { CommonModule } from './common/common.module';
 import { QueueModule } from './queues/queue.module';
+import { LeadsModule } from './leads/leads.module';
 
 // module decorator
 @Module({
@@ -46,17 +48,21 @@ import { QueueModule } from './queues/queue.module';
       },
     }),
 
-    ThrottlerModule?.forRoot([
-      {
-        ttl: 60_000,
-        limit: 100,
-      },
-    ]),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => [
+        {
+          ttl: Number(configService.get('THROTTLE_TTL') ?? 60_000),
+          limit: Number(configService.get('THROTTLE_LIMIT') ?? 100),
+        },
+      ],
+    }),
 
     CommonModule,
     QueueModule.forRoot(),
     AuthModule,
     OrganizationGuardsModule,
+    AdminModule,
     OrganizationsModule,
     SubscriptionsModule,
     BillingModule,
@@ -68,6 +74,7 @@ import { QueueModule } from './queues/queue.module';
     NotificationsModule,
     JobsModule,
     AiModule,
+    LeadsModule,
   ],
   controllers: [AppController],
   providers: [

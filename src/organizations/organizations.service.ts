@@ -15,7 +15,9 @@ import {
   resolvePagination,
 } from '../common/dto/pagination-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
+import { randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
 import {
   buildActiveSubscriptionDates,
@@ -80,12 +82,15 @@ import {
   generateTwoFactorSecret,
   verifyTwoFactorCode,
 } from '../auth/two-factor.util';
+import { EmailService } from '../email/email.service';
 
 const ASSIGNABLE_MEMBER_ROLES: RegisterAs[] = [
   RegisterAs.ADMIN,
   RegisterAs.MANAGER,
   RegisterAs.MEMBER,
 ];
+
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function slugifyOrganizationName(name: string) {
   return name
@@ -107,6 +112,8 @@ export class OrganizationsService {
     private readonly userRepository: Repository<User>,
     private readonly projectsService: ProjectsService,
     private readonly activityService: ActivityService,
+    private readonly emailService: EmailService,
+    private readonly configService: ConfigService,
     @Inject(forwardRef(() => BillingService))
     private readonly billingService: BillingService,
   ) {}
@@ -188,23 +195,43 @@ export class OrganizationsService {
         : SubscriptionStatus.ACTIVE,
     );
 
+    const inviteToken = randomBytes(32).toString('hex');
+    const inviteExpiresAt = new Date(Date.now() + INVITE_TTL_MS);
+
     const owner = await this.userRepository.save(
       this.userRepository.create({
         fullName: dto.ownerName.trim(),
         email: ownerEmail,
         passwordHash: null,
         authProvider: AuthProvider.EMAIL,
-        signupSource: SignupSource.DIRECT,
+        signupSource: SignupSource.INVITE,
         role: RegisterAs.OWNER,
         emailVerificationStatus: EmailVerificationStatus.PENDING,
         accountStatus: AccountStatus.PENDING,
         isPlatformAdmin: false,
         organizationId: organization.id,
+        inviteToken,
+        inviteExpiresAt,
       }),
     );
 
     organization.subscription = subscription;
     organization.users = [owner];
+
+    const frontendUrl = this.configService.get<string>(
+      'FRONTEND_URL',
+      'http://localhost:3000',
+    );
+    const inviteUrl = `${frontendUrl.replace(/\/$/, '')}/accept-invite?token=${inviteToken}`;
+
+    await this.emailService.sendTeamInviteEmail({
+      to: owner.email,
+      fullName: owner.fullName,
+      organizationName: organization.name,
+      inviterName: 'Orbit Platform',
+      roleLabel: 'Owner',
+      inviteUrl,
+    });
 
     return mapOrganizationResponse(organization, 1, owner);
   }
@@ -214,6 +241,9 @@ export class OrganizationsService {
     dto: UpdateOrganizationDto,
   ): Promise<OrganizationResponse> {
     const organization = await this.getOrganizationWithRelations(id);
+    const owner =
+      organization.users?.find((user) => user.role === RegisterAs.OWNER) ??
+      null;
 
     if (dto.slug && dto.slug !== organization.slug) {
       organization.slug = await this.resolveUniqueSlug(dto.slug, id);
@@ -229,6 +259,31 @@ export class OrganizationsService {
 
     if (dto.projectCount !== undefined) {
       organization.projectCount = dto.projectCount;
+    }
+
+    if (owner && (dto.ownerName !== undefined || dto.ownerEmail !== undefined)) {
+      let ownerEmailChanged = false;
+
+      if (dto.ownerName !== undefined) {
+        owner.fullName = dto.ownerName.trim();
+      }
+
+      if (dto.ownerEmail !== undefined) {
+        const nextEmail = dto.ownerEmail.trim().toLowerCase();
+
+        if (nextEmail !== owner.email) {
+          await this.ensureOwnerEmailAvailable(nextEmail, owner.id);
+          owner.email = nextEmail;
+          ownerEmailChanged = true;
+          organization.billingEmail = nextEmail;
+        }
+      }
+
+      await this.userRepository.save(owner);
+
+      if (ownerEmailChanged) {
+        await invalidateUserSessions(this.userRepository, owner.id);
+      }
     }
 
     await this.organizationRepository.save(organization);
@@ -254,6 +309,7 @@ export class OrganizationsService {
     return mapOrganizationResponse(
       organization,
       organization.users?.length ?? 0,
+      owner,
     );
   }
 
@@ -894,12 +950,12 @@ export class OrganizationsService {
     return Boolean(existing && existing.id !== excludeId);
   }
 
-  private async ensureOwnerEmailAvailable(email: string) {
+  private async ensureOwnerEmailAvailable(email: string, excludeUserId?: string) {
     const existingUser = await this.userRepository.findOne({
       where: { email },
     });
 
-    if (existingUser) {
+    if (existingUser && existingUser.id !== excludeUserId) {
       throw new ConflictException('A user with this email already exists.');
     }
   }

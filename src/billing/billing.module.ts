@@ -6,6 +6,7 @@ import { Organization } from '../entities/organization.entity';
 import { Project } from '../entities/project.entity';
 import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
+import { AiCreditUsage } from '../entities/ai-credit-usage.entity';
 import {
   BillingController,
   BillingWebhookController,
@@ -15,7 +16,13 @@ import { StripeService } from './stripe.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Subscription, Organization, User, Project]),
+    TypeOrmModule.forFeature([
+      Subscription,
+      Organization,
+      User,
+      Project,
+      AiCreditUsage,
+    ]),
     OrganizationGuardsModule,
     // Avoid eager AuthModule import: Auth -> Organizations -> Billing -> Auth.
     forwardRef(() => AuthModule),

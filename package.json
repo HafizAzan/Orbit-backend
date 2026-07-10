@@ -34,6 +34,7 @@
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/typeorm": "^11.0.1",
     "@nestjs/websockets": "^11.1.27",
+    "@sentry/node": "^10.65.0",
     "argon2": "^0.44.0",
     "bullmq": "^5.79.3",
     "class-transformer": "^0.5.1",

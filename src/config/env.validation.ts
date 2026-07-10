@@ -35,6 +35,11 @@ export const envValidationSchema = Joi.object({
   REDIS_HOST: Joi.string().hostname().default('127.0.0.1'),
   REDIS_PORT: Joi.number().port().default(6379),
   REDIS_PASSWORD: Joi.string().allow('').optional(),
+  THROTTLE_TTL: Joi.number().integer().min(1000).default(60_000),
+  THROTTLE_LIMIT: Joi.number().integer().min(1).default(100),
+  SENTRY_DSN: Joi.string().uri().allow('').optional(),
+  SENTRY_TRACES_SAMPLE_RATE: Joi.number().min(0).max(1).default(0.1),
+  LEADS_INBOX_EMAIL: Joi.string().email().optional(),
   CORS_ORIGIN: Joi.string()
     .required()
     .custom((value, helpers) => {

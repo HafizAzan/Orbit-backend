@@ -6,12 +6,17 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { ActivityAction, ActivityModule } from '../enum/activity.enum';
+import {
+  ActivityFlagReason,
+  ActivityReviewStatus,
+} from '../enum/activity-review.enum';
 import { RegisterAs } from '../enum/auth.enum';
 
 @Entity('activity_events')
 @Index(['organizationId', 'createdAt'])
 @Index(['organizationId', 'actorRole'])
 @Index(['organizationId', 'module'])
+@Index(['reviewStatus', 'createdAt'])
 export class ActivityEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -61,6 +66,31 @@ export class ActivityEvent {
 
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, unknown> | null;
+
+  @Column({
+    name: 'review_status',
+    type: 'enum',
+    enum: ActivityReviewStatus,
+    default: ActivityReviewStatus.NONE,
+  })
+  reviewStatus: ActivityReviewStatus;
+
+  @Column({
+    name: 'flag_reason',
+    type: 'enum',
+    enum: ActivityFlagReason,
+    nullable: true,
+  })
+  flagReason: ActivityFlagReason | null;
+
+  @Column({ name: 'flag_note', type: 'varchar', length: 500, nullable: true })
+  flagNote: string | null;
+
+  @Column({ name: 'flagged_at', type: 'timestamptz', nullable: true })
+  flaggedAt: Date | null;
+
+  @Column({ name: 'resolved_at', type: 'timestamptz', nullable: true })
+  resolvedAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

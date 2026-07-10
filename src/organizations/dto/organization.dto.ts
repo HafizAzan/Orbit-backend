@@ -53,6 +53,17 @@ export class UpdateOrganizationDto {
   slug?: string;
 
   @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  ownerName?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(255)
+  ownerEmail?: string;
+
+  @IsOptional()
   @IsEnum(OrganizationStatus)
   status?: OrganizationStatus;
 

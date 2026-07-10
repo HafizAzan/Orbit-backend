@@ -16,6 +16,7 @@ function memberUser(userId = 'member-1'): JwtPayload {
     role: RegisterAs.MEMBER,
     organizationId: 'org-1',
     email: 'member@example.com',
+    isPlatformAdmin: false,
   };
 }
 
@@ -67,6 +68,7 @@ describe('owner task access', () => {
     role: RegisterAs.OWNER,
     organizationId: 'org-1',
     email: 'owner@example.com',
+    isPlatformAdmin: false,
   };
 
   it('cannot operate on tasks', () => {

@@ -17,6 +17,7 @@ import type {
 import { Organization } from '../entities/organization.entity';
 import { Subscription } from '../entities/subscription.entity';
 import { User } from '../entities/user.entity';
+import { AiCreditUsage } from '../entities/ai-credit-usage.entity';
 import { AccountStatus, RegisterAs } from '../enum/auth.enum';
 import {
   BillingCycle,
@@ -30,6 +31,7 @@ import { StripeService } from './stripe.service';
 import {
   mapStripeIntervalToBillingCycle,
   mapStripeSubscriptionStatus,
+  normalizeProductMetadata,
   parseProductCatalogPresentation,
   resolvePlanCodeFromProduct,
   extractMarketingFeatures,
@@ -40,6 +42,7 @@ import {
 } from './utils/stripe.util';
 import {
   buildPlanEntitlements,
+  currentAiCreditsPeriodKey,
   hasAnyPlanFeature,
   hasPlanFeature,
   isWithinPlanLimit,
@@ -104,11 +107,12 @@ export type BillingInvoiceResponse = {
 };
 
 export type OrganizationUsageMetric = {
-  key: 'staff_users' | 'projects' | 'boards';
+  key: 'staff_users' | 'projects' | 'boards' | 'ai_credits';
   label: string;
   used: number;
   limit: number | null;
   unlimited: boolean;
+  remaining?: number | null;
 };
 
 export type OrganizationUsageResponse = {
@@ -125,6 +129,7 @@ export type OrganizationUsageResponse = {
     staffUsers: number;
     projects: number;
     boards: number;
+    aiCredits: number;
   };
   metrics: OrganizationUsageMetric[];
 };
@@ -142,6 +147,8 @@ export class BillingService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Project)
     private readonly projectRepository: Repository<Project>,
+    @InjectRepository(AiCreditUsage)
+    private readonly aiCreditUsageRepository: Repository<AiCreditUsage>,
   ) {}
 
   async requiresPlanSelectionForOrganization(organizationId: string) {
@@ -388,7 +395,8 @@ export class BillingService {
       throw new NotFoundException('Invoice not found.');
     }
 
-    this.assertRefundWindow(invoice);
+    const windowDays = await this.resolveRefundWindowDays(subscription);
+    this.assertRefundWindow(invoice, windowDays);
 
     const paymentIntentId = await this.resolveInvoicePaymentIntentId(
       invoice.id,
@@ -463,7 +471,10 @@ export class BillingService {
       limit: stripeLimit,
     });
 
-    const mapped = invoices.data.map((invoice) => this.mapInvoice(invoice));
+    const windowDays = await this.resolveRefundWindowDays(subscription);
+    const mapped = invoices.data.map((invoice) =>
+      this.mapInvoice(invoice, windowDays),
+    );
 
     return buildPaginatedResponse(mapped, mapped.length, page, limit);
   }
@@ -511,6 +522,10 @@ export class BillingService {
       organization.id,
     );
     const usage = await this.countOrganizationUsage(organization.id);
+    const aiCreditsUsed = await this.getAiCreditsUsed(subscription);
+
+    const aiLimit = entitlements.limits.max_ai_credits;
+    const aiUnlimited = aiLimit == null || aiLimit < 0;
 
     const metrics: OrganizationUsageMetric[] = [
       {
@@ -540,6 +555,16 @@ export class BillingService {
           entitlements.limits.max_boards == null ||
           entitlements.limits.max_boards < 0,
       },
+      {
+        key: 'ai_credits',
+        label: 'AI credits',
+        used: aiCreditsUsed,
+        limit: aiLimit,
+        unlimited: aiUnlimited,
+        remaining: aiUnlimited
+          ? null
+          : Math.max((aiLimit ?? 0) - aiCreditsUsed, 0),
+      },
     ];
 
     return {
@@ -552,7 +577,10 @@ export class BillingService {
       featureFlags: entitlements.featureFlags,
       metadata: entitlements.metadata,
       limits: entitlements.limits,
-      usage,
+      usage: {
+        ...usage,
+        aiCredits: aiCreditsUsed,
+      },
       metrics,
     };
   }
@@ -641,6 +669,96 @@ export class BillingService {
           `This feature is not available on your current plan. Please upgrade.`,
       );
     }
+  }
+
+  async consumeAiCredit(
+    organizationId: string,
+    options: {
+      amount?: number;
+      userId?: string | null;
+      feature?: string;
+    } = {},
+  ) {
+    const amount = options.amount ?? 1;
+    if (amount < 1) {
+      return;
+    }
+
+    const entitlements =
+      await this.resolveOrganizationEntitlements(organizationId);
+
+    if (!hasPlanFeature(entitlements.featureFlags, 'ai_assistant')) {
+      throw new ForbiddenException(
+        'AI assistant is not available on your current plan. Please upgrade.',
+      );
+    }
+
+    const subscription =
+      await this.getOrCreateLocalSubscription(organizationId);
+    const periodKey = currentAiCreditsPeriodKey();
+    let used = subscription.aiCreditsUsed ?? 0;
+
+    if (subscription.aiCreditsPeriodKey !== periodKey) {
+      used = 0;
+      subscription.aiCreditsPeriodKey = periodKey;
+      subscription.aiCreditsUsed = 0;
+    }
+
+    const limit = entitlements.limits.max_ai_credits;
+    if (limit != null && limit >= 0 && used + amount > limit) {
+      throw new BadRequestException(
+        'AI credit limit reached for this month. Upgrade your plan or wait for the next period.',
+      );
+    }
+
+    subscription.aiCreditsUsed = used + amount;
+    subscription.aiCreditsPeriodKey = periodKey;
+    await this.subscriptionRepository.save(subscription);
+
+    await this.aiCreditUsageRepository.save(
+      this.aiCreditUsageRepository.create({
+        organizationId,
+        userId: options.userId ?? null,
+        feature: options.feature?.trim() || 'ai',
+        credits: amount,
+        periodKey,
+      }),
+    );
+  }
+
+  async listAiCreditHistory(user: JwtPayload, limit = 20) {
+    if (!user.organizationId) {
+      throw new ForbiddenException('Organization membership is required.');
+    }
+
+    const rows = await this.aiCreditUsageRepository.find({
+      where: { organizationId: user.organizationId },
+      relations: { user: true },
+      order: { createdAt: 'DESC' },
+      take: Math.min(Math.max(limit, 1), 100),
+    });
+
+    return {
+      data: rows.map((row) => ({
+        id: row.id,
+        feature: row.feature,
+        credits: row.credits,
+        periodKey: row.periodKey,
+        userName: row.user?.fullName ?? 'System',
+        userEmail: row.user?.email ?? null,
+        createdAt: row.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  private async getAiCreditsUsed(subscription: Subscription) {
+    const periodKey = currentAiCreditsPeriodKey();
+
+    if (subscription.aiCreditsPeriodKey !== periodKey) {
+      return 0;
+    }
+
+    return subscription.aiCreditsUsed ?? 0;
   }
 
   private async countOrganizationUsage(organizationId: string) {
@@ -1091,7 +1209,19 @@ export class BillingService {
     return invoices.data[0] ?? null;
   }
 
-  private assertRefundWindow(invoice: StripeInvoice) {
+  private async resolveRefundWindowDays(subscription: Subscription) {
+    const product = await this.resolveSubscriptionStripeProduct(subscription);
+    const metadata = normalizeProductMetadata(product?.metadata);
+    const fromProduct = Number.parseInt(metadata.refund_days?.trim() ?? '', 10);
+
+    if (Number.isFinite(fromProduct) && fromProduct > 0) {
+      return fromProduct;
+    }
+
+    return this.stripeService.refundWindowDays;
+  }
+
+  private assertRefundWindow(invoice: StripeInvoice, windowDays: number) {
     const paidAtUnix =
       invoice.status_transitions?.paid_at ?? invoice.created ?? null;
 
@@ -1101,7 +1231,6 @@ export class BillingService {
       );
     }
 
-    const windowDays = this.stripeService.refundWindowDays;
     const windowMs = windowDays * 24 * 60 * 60 * 1000;
     const paidAtMs = paidAtUnix * 1000;
 
@@ -1137,10 +1266,12 @@ export class BillingService {
     return null;
   }
 
-  private mapInvoice(invoice: StripeInvoice): BillingInvoiceResponse {
+  private mapInvoice(
+    invoice: StripeInvoice,
+    windowDays: number,
+  ): BillingInvoiceResponse {
     const paidAtUnix =
       invoice.status_transitions?.paid_at ?? invoice.created ?? null;
-    const windowDays = this.stripeService.refundWindowDays;
     const refundWindowEndsAt =
       paidAtUnix != null
         ? new Date(

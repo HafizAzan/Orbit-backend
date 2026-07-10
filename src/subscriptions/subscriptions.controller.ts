@@ -9,8 +9,10 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PlatformAdminGuard } from '../auth/guards/platform-admin.guard';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { UpdateSubscriptionBillingDto } from './dto/subscription.dto';
+import {
+  ListSubscriptionsQueryDto,
+  UpdateSubscriptionBillingDto,
+} from './dto/subscription.dto';
 import { SubscriptionsService } from './subscriptions.service';
 
 @Controller('admin/subscriptions')
@@ -19,7 +21,7 @@ export class SubscriptionsController {
   constructor(private readonly subscriptionsService: SubscriptionsService) {}
 
   @Get()
-  findAll(@Query() query: PaginationQueryDto) {
+  findAll(@Query() query: ListSubscriptionsQueryDto) {
     return this.subscriptionsService.findAll(query);
   }
 
@@ -31,6 +33,11 @@ export class SubscriptionsController {
   @Get('plan-distribution')
   getPlanDistribution() {
     return this.subscriptionsService.getPlanDistribution();
+  }
+
+  @Get('revenue-series')
+  getRevenueSeries() {
+    return this.subscriptionsService.getRevenueSeries();
   }
 
   @Patch(':id/billing')
