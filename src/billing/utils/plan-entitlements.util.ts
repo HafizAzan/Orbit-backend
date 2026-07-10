@@ -19,6 +19,7 @@ export const PLAN_FEATURE_FLAGS = [
   'dedicated_success',
   'custom_sla',
   'ai_assistant',
+  'github_integration',
 ] as const;
 
 export type PlanFeatureFlag = (typeof PLAN_FEATURE_FLAGS)[number];
@@ -69,6 +70,7 @@ const FALLBACK_FEATURE_FLAGS: Record<PlanCode, PlanFeatureFlag[]> = {
     'tasks',
     'basic_reporting',
     'ai_assistant',
+    'github_integration',
   ],
   [PlanCode.PRO]: [
     'projects',
@@ -80,6 +82,7 @@ const FALLBACK_FEATURE_FLAGS: Record<PlanCode, PlanFeatureFlag[]> = {
     'reports',
     'priority_support',
     'ai_assistant',
+    'github_integration',
   ],
   [PlanCode.BUSINESS]: [
     'projects',
@@ -94,6 +97,7 @@ const FALLBACK_FEATURE_FLAGS: Record<PlanCode, PlanFeatureFlag[]> = {
     'workload_reports',
     'priority_support',
     'ai_assistant',
+    'github_integration',
   ],
   [PlanCode.ENTERPRISE]: [
     'projects',
@@ -113,6 +117,7 @@ const FALLBACK_FEATURE_FLAGS: Record<PlanCode, PlanFeatureFlag[]> = {
     'dedicated_success',
     'custom_sla',
     'ai_assistant',
+    'github_integration',
   ],
 };
 
