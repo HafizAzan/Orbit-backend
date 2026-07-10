@@ -7,7 +7,7 @@ export function generateTwoFactorSecret() {
 export function buildTwoFactorOtpAuthUrl(
   email: string,
   secret: string,
-  issuer = 'FlowSync',
+  issuer = 'Orbit',
 ) {
   return generateURI({
     issuer,

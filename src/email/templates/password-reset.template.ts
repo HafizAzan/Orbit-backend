@@ -13,7 +13,7 @@ export function buildPasswordResetEmailHtml({
 
   return `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 560px; margin: 0 auto; padding: 24px;">
-      <h2 style="margin: 0 0 16px; color: #4f46e5;">Reset your FlowSync password</h2>
+      <h2 style="margin: 0 0 16px; color: #4f46e5;">Reset your Orbit password</h2>
       <p>Hi ${safeName},</p>
       <p>We received a request to reset your password. Click the button below to choose a new password:</p>
       <p style="margin: 28px 0;">

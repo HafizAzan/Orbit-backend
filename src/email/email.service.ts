@@ -40,7 +40,7 @@ export class EmailService {
 
     this.from = this.configService.get<string>(
       'EMAIL_FROM',
-      `FlowSync <${user}>`,
+      `Orbit <${user}>`,
     );
 
     this.transporter = nodemailer.createTransport({
@@ -63,7 +63,7 @@ export class EmailService {
 
     await this.sendEmail({
       to,
-      subject: 'Your FlowSync verification code',
+      subject: 'Your Orbit verification code',
       html: buildRegisterOtpEmailHtml({
         fullName: params.fullName,
         otp: params.otp,
@@ -82,7 +82,7 @@ export class EmailService {
 
     await this.sendEmail({
       to,
-      subject: 'Confirm your new FlowSync email address',
+      subject: 'Confirm your new Orbit email address',
       html: buildRegisterOtpEmailHtml({
         fullName: params.fullName,
         otp: params.otp,
@@ -101,7 +101,7 @@ export class EmailService {
 
     await this.sendEmail({
       to,
-      subject: 'Reset your FlowSync password',
+      subject: 'Reset your Orbit password',
       html: buildPasswordResetEmailHtml({
         fullName: params.fullName,
         resetUrl: params.resetUrl,
@@ -124,7 +124,7 @@ export class EmailService {
 
     await this.sendEmail({
       to,
-      subject: `You're invited to join ${params.organizationName} on FlowSync`,
+      subject: `You're invited to join ${params.organizationName} on Orbit`,
       html: buildTeamInviteEmailHtml({
         fullName: params.fullName,
         organizationName: params.organizationName,

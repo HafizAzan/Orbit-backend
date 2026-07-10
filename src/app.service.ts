@@ -11,7 +11,7 @@ export class AppService {
   getHealth(): HealthResponse {
     return {
       status: 'ok',
-      service: 'flow-sync-api',
+      service: 'orbit-api',
       timestamp: new Date().toISOString(),
     };
   }

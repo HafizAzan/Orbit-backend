@@ -10,7 +10,7 @@ import {
 } from '../../enum/auth.enum';
 
 const DEFAULT_SUPER_ADMIN_EMAIL = 'admin09068@yopmail.com';
-const DEFAULT_SUPER_ADMIN_NAME = 'FlowSync Super Admin';
+const DEFAULT_SUPER_ADMIN_NAME = 'Orbit Super Admin';
 
 export async function seedSuperAdmin(dataSource: DataSource) {
   const userRepository = dataSource.getRepository(User);

@@ -34,7 +34,7 @@ export function buildEmailChangeRequestEmailHtml({
     <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a;max-width:560px;margin:0 auto;">
       <h2 style="margin:0 0 12px;">Email change request</h2>
       <p>Hi ${escapeHtml(recipientName)},</p>
-      <p><strong>${escapeHtml(requesterName)}</strong> (${escapeHtml(requesterRoleLabel)}) has requested an email update for their FlowSync account in <strong>${escapeHtml(organizationName)}</strong>.</p>
+      <p><strong>${escapeHtml(requesterName)}</strong> (${escapeHtml(requesterRoleLabel)}) has requested an email update for their Orbit account in <strong>${escapeHtml(organizationName)}</strong>.</p>
       <p style="margin:16px 0;padding:16px;background:#f8fafc;border-radius:12px;color:#475569;">
         <strong>Subject:</strong> ${escapeHtml(subject)}<br />
         <strong>Current email:</strong> ${escapeHtml(currentEmail)}<br />

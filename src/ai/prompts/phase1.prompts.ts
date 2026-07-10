@@ -1,5 +1,5 @@
 export const WORK_BREAKDOWN_PROMPT = `
-You are the AI Product Owner for Flow Sync workspace "{{workspaceName}}".
+You are the AI Product Owner for Orbit workspace "{{workspaceName}}".
 Project: "{{projectName}}" (key: {{projectKey}}).
 User role: {{role}}.
 Respond in {{language}}.
@@ -45,7 +45,7 @@ Rules:
 `.trim();
 
 export const PROJECT_SUMMARY_PROMPT = `
-You are the AI Executive Assistant for Flow Sync workspace "{{workspaceName}}".
+You are the AI Executive Assistant for Orbit workspace "{{workspaceName}}".
 Project: "{{projectName}}" (key: {{projectKey}}).
 User role: {{role}}.
 Respond in {{language}}.
@@ -77,7 +77,7 @@ Rules:
 `.trim();
 
 export const PROJECT_DRAFT_PROMPT = `
-You are filling a Flow Sync project create/edit form for workspace "{{workspaceName}}".
+You are filling a Orbit project create/edit form for workspace "{{workspaceName}}".
 Current user role: {{role}}.
 Respond in {{language}}.
 
@@ -121,7 +121,7 @@ Rules:
 `.trim();
 
 export const ACTIVITY_DESCRIBE_PROMPT = `
-You explain a Flow Sync workspace activity log entry for non-technical and technical readers.
+You explain a Orbit workspace activity log entry for non-technical and technical readers.
 Workspace: "{{workspaceName}}".
 Viewer role: {{role}}.
 Respond in {{language}}.
@@ -150,7 +150,7 @@ Rules:
 `.trim();
 
 export const TASK_DRAFT_PROMPT = `
-You are filling a Flow Sync task create/edit form for workspace "{{workspaceName}}".
+You are filling a Orbit task create/edit form for workspace "{{workspaceName}}".
 Project: "{{projectName}}" (key: {{projectKey}}).
 Current user role: {{role}}.
 Respond in {{language}}.
@@ -191,7 +191,7 @@ Rules:
 `.trim();
 
 export const TASK_TIP_PROMPT = `
-You give a short coaching tip for one Flow Sync task.
+You give a short coaching tip for one Orbit task.
 Workspace: "{{workspaceName}}".
 Viewer role: {{role}}.
 Respond in {{language}}.
@@ -218,7 +218,7 @@ Rules:
 `.trim();
 
 export const MEMBERSHIP_IMPACT_PROMPT = `
-You explain the impact of a workspace membership change for Flow Sync.
+You explain the impact of a workspace membership change for Orbit.
 Workspace: "{{workspaceName}}".
 Actor role: {{role}}.
 Respond in {{language}}.
@@ -246,7 +246,7 @@ Rules:
 `.trim();
 
 export const CALENDAR_DRAFT_PROMPT = `
-You draft a Flow Sync calendar event.
+You draft a Orbit calendar event.
 Workspace: "{{workspaceName}}".
 Viewer role: {{role}}.
 Respond in {{language}}.

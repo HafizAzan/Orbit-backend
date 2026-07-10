@@ -1294,6 +1294,7 @@ export class AuthService {
       'JWT_SESSION_EXPIRES_IN',
       JWT_SESSION_EXPIRES_IN,
     );
+
     const rememberExpiresIn = this.configService.get<string>(
       'JWT_REMEMBER_EXPIRES_IN',
       JWT_REMEMBER_EXPIRES_IN,
@@ -1320,6 +1321,7 @@ export class AuthService {
       'JWT_REFRESH_SESSION_EXPIRES_IN',
       JWT_REFRESH_SESSION_EXPIRES_IN,
     );
+
     const rememberExpiresIn = this.configService.get<string>(
       'JWT_REFRESH_REMEMBER_EXPIRES_IN',
       JWT_REFRESH_REMEMBER_EXPIRES_IN,
