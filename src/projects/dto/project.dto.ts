@@ -15,7 +15,6 @@ import {
 } from 'class-validator';
 import {
   ProjectCategory,
-  ProjectMemberRole,
   ProjectPriority,
   ProjectStatus,
   ProjectTheme,
@@ -129,20 +128,6 @@ export class UpdateProjectDto {
   @IsOptional()
   @IsUUID('4')
   leadUserId?: string;
-}
-
-export class UpdateProjectMemberRoleDto {
-  @IsEnum(ProjectMemberRole)
-  role: ProjectMemberRole;
-}
-
-export class AddProjectMemberDto {
-  @IsUUID('4')
-  userId: string;
-
-  @IsOptional()
-  @IsEnum(ProjectMemberRole)
-  role?: ProjectMemberRole;
 }
 
 export class ListProjectsQueryDto extends PaginationQueryDto {}

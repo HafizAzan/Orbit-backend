@@ -15,11 +15,9 @@ import { OrganizationMemberGuard } from '../auth/guards/organization-member.guar
 import { OrganizationSubscriptionActiveGuard } from '../auth/guards/organization-subscription-active.guard';
 import type { JwtPayload } from '../auth/jwt/jwt-payload.type';
 import {
-  AddProjectMemberDto,
   CreateProjectDto,
   ListProjectsQueryDto,
   UpdateProjectDto,
-  UpdateProjectMemberRoleDto,
   UpdateMyProjectThemeDto,
 } from './dto/project.dto';
 import { CreateProjectCommentDto } from './dto/project-comment.dto';
@@ -27,9 +25,7 @@ import { UpdateProjectGitHubDto } from './dto/project-github.dto';
 import {
   ListAssignableMembersQueryDto,
   ListProjectCommentsQueryDto,
-  ListProjectMembersQueryDto,
 } from './dto/project-list-query.dto';
-import { listProjectThemes } from '../common/mappers/project-theme.mapper';
 import { GitHubIntegrationService } from '../github/github-integration.service';
 import { ProjectCommentsService } from './project-comments.service';
 import { ProjectsService } from './projects.service';
@@ -57,11 +53,6 @@ export class ProjectsController {
     @Query() query: ListAssignableMembersQueryDto,
   ) {
     return this.projectsService.listAssignableMembers(user, query);
-  }
-
-  @Get('themes/list')
-  listProjectThemes() {
-    return listProjectThemes();
   }
 
   @Get(':projectId')
@@ -126,52 +117,6 @@ export class ProjectsController {
     @Param('projectId') projectId: string,
   ) {
     return this.projectsService.deleteProject(user, projectId);
-  }
-
-  @Get(':projectId/members')
-  listProjectMembers(
-    @CurrentUser() user: JwtPayload,
-    @Param('projectId') projectId: string,
-    @Query() query: ListProjectMembersQueryDto,
-  ) {
-    return this.projectsService.listProjectMembers(user, projectId, query);
-  }
-
-  @Post(':projectId/members')
-  addProjectMember(
-    @CurrentUser() user: JwtPayload,
-    @Param('projectId') projectId: string,
-    @Body() dto: AddProjectMemberDto,
-  ) {
-    return this.projectsService.addProjectMember(user, projectId, dto);
-  }
-
-  @Patch(':projectId/members/:memberUserId')
-  updateProjectMemberRole(
-    @CurrentUser() user: JwtPayload,
-    @Param('projectId') projectId: string,
-    @Param('memberUserId') memberUserId: string,
-    @Body() dto: UpdateProjectMemberRoleDto,
-  ) {
-    return this.projectsService.updateProjectMemberRole(
-      user,
-      projectId,
-      memberUserId,
-      dto,
-    );
-  }
-
-  @Delete(':projectId/members/:memberUserId')
-  removeProjectMember(
-    @CurrentUser() user: JwtPayload,
-    @Param('projectId') projectId: string,
-    @Param('memberUserId') memberUserId: string,
-  ) {
-    return this.projectsService.removeProjectMember(
-      user,
-      projectId,
-      memberUserId,
-    );
   }
 
   @Get(':projectId/comments')

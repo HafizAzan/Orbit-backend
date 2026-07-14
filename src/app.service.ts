@@ -52,15 +52,19 @@ export class AppService {
       detail: stripeKey ? 'Configured' : 'STRIPE_SECRET_KEY missing',
     });
 
-    const redisUrl = this.configService.get<string>('REDIS_URL');
     const queueEnabled =
       String(this.configService.get('QUEUE_ENABLED') ?? 'false').toLowerCase() ===
       'true';
     if (queueEnabled) {
+      const redisHost = this.configService.get<string>('REDIS_HOST', '127.0.0.1');
+      const redisPort = this.configService.get<string | number>('REDIS_PORT', 6379);
+      const hasRedisConfig = Boolean(redisHost) && Number(redisPort) > 0;
       checks.push({
         name: 'queue',
-        status: redisUrl ? 'up' : 'down',
-        detail: redisUrl ? 'Queue enabled with Redis URL' : 'QUEUE_ENABLED without REDIS_URL',
+        status: hasRedisConfig ? 'up' : 'down',
+        detail: hasRedisConfig
+          ? `Queue enabled (${redisHost}:${redisPort})`
+          : 'QUEUE_ENABLED without REDIS_HOST/REDIS_PORT',
       });
     } else {
       checks.push({

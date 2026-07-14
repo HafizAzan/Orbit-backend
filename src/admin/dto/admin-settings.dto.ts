@@ -1,6 +1,4 @@
-import { Type } from 'class-transformer';
 import {
-  IsBoolean,
   IsOptional,
   IsString,
   MaxLength,
@@ -58,51 +56,6 @@ export class UpdatePlatformSettingsDto {
   @IsString()
   @MaxLength(255)
   smtpPassword?: string;
-
-  @IsOptional()
-  @Type(() => Boolean)
-  @IsBoolean()
-  enforce2fa?: boolean;
-
-  @IsOptional()
-  @Type(() => Boolean)
-  @IsBoolean()
-  highPasswordComplexity?: boolean;
-
-  @IsOptional()
-  @Type(() => Boolean)
-  @IsBoolean()
-  autoSessionTimeout?: boolean;
-
-  @IsOptional()
-  @Type(() => Boolean)
-  @IsBoolean()
-  emailNotifications?: boolean;
-
-  @IsOptional()
-  @Type(() => Boolean)
-  @IsBoolean()
-  weeklyDigest?: boolean;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  slackWebhook?: string;
-
-  @IsOptional()
-  @Type(() => Boolean)
-  @IsBoolean()
-  stripeEnabled?: boolean;
-
-  @IsOptional()
-  @Type(() => Boolean)
-  @IsBoolean()
-  sendgridEnabled?: boolean;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  webhookUrl?: string;
 
   @IsOptional()
   @IsString()

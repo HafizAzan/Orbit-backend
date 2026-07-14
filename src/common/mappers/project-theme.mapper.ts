@@ -122,7 +122,3 @@ export function getProjectThemeMeta(
 ): ProjectThemeMeta {
   return PROJECT_THEME_META[normalizeProjectTheme(theme)];
 }
-
-export function listProjectThemes(): ProjectThemeMeta[] {
-  return Object.values(PROJECT_THEME_META);
-}

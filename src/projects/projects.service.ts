@@ -39,11 +39,9 @@ import {
   type PaginatedResponse,
 } from '../common/dto/pagination-query.dto';
 import {
-  AddProjectMemberDto,
   CreateProjectDto,
   ListProjectsQueryDto,
   UpdateProjectDto,
-  UpdateProjectMemberRoleDto,
   UpdateMyProjectThemeDto,
 } from './dto/project.dto';
 import {
@@ -607,128 +605,6 @@ export class ProjectsService {
     }));
 
     return paginateArray(members, query);
-  }
-
-  async addProjectMember(
-    user: JwtPayload,
-    projectId: string,
-    dto: AddProjectMemberDto,
-  ) {
-    const project = await this.getAccessibleProject(user, projectId, true);
-    const actorMembership = this.findMembership(
-      project.members ?? [],
-      user.sub,
-    );
-
-    if (!canManageProjectMembership(user, actorMembership)) {
-      throw new ForbiddenException(
-        'You do not have permission to manage project members.',
-      );
-    }
-
-    await this.ensureActiveOrganizationUser(project.organizationId, dto.userId);
-
-    const existing = await this.projectMemberRepository.findOne({
-      where: { projectId, userId: dto.userId },
-    });
-
-    if (existing) {
-      throw new ConflictException(
-        'This user is already a member of the project.',
-      );
-    }
-
-    await this.projectMemberRepository.save(
-      this.projectMemberRepository.create({
-        projectId,
-        userId: dto.userId,
-        role: dto.role ?? ProjectMemberRole.MEMBER,
-      }),
-    );
-
-    const actorName = await this.getUserDisplayName(user.sub);
-    void this.notificationsService.notifyProjectMembership({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      projectName: project.name,
-      actorUserId: user.sub,
-      actorName,
-      memberUserIds: [dto.userId],
-    });
-
-    return this.listProjectMembers(user, projectId);
-  }
-
-  async updateProjectMemberRole(
-    user: JwtPayload,
-    projectId: string,
-    memberUserId: string,
-    dto: UpdateProjectMemberRoleDto,
-  ) {
-    const project = await this.getAccessibleProject(user, projectId, true);
-    const actorMembership = this.findMembership(
-      project.members ?? [],
-      user.sub,
-    );
-
-    if (!canManageProjectMembership(user, actorMembership)) {
-      throw new ForbiddenException(
-        'You do not have permission to manage project members.',
-      );
-    }
-
-    const membership = await this.projectMemberRepository.findOne({
-      where: { projectId, userId: memberUserId },
-    });
-
-    if (!membership) {
-      throw new NotFoundException('Project member not found.');
-    }
-
-    if (
-      project.leadUserId === memberUserId &&
-      dto.role !== ProjectMemberRole.ADMIN
-    ) {
-      throw new BadRequestException(
-        'Project lead must remain a project admin.',
-      );
-    }
-
-    membership.role = dto.role;
-    await this.projectMemberRepository.save(membership);
-
-    return this.listProjectMembers(user, projectId);
-  }
-
-  async removeProjectMember(
-    user: JwtPayload,
-    projectId: string,
-    memberUserId: string,
-  ) {
-    const project = await this.getAccessibleProject(user, projectId, true);
-    const actorMembership = this.findMembership(
-      project.members ?? [],
-      user.sub,
-    );
-
-    if (!canManageProjectMembership(user, actorMembership)) {
-      throw new ForbiddenException(
-        'You do not have permission to manage project members.',
-      );
-    }
-
-    if (memberUserId === project.leadUserId) {
-      throw new BadRequestException(
-        'Project lead cannot be removed from the project.',
-      );
-    }
-
-    await this.projectMemberRepository.delete({
-      projectId,
-      userId: memberUserId,
-    });
-
-    return this.listProjectMembers(user, projectId);
   }
 
   async removeUserFromManagedProjects(actor: JwtPayload, memberUserId: string) {
