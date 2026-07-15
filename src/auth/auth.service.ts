@@ -77,8 +77,7 @@ const JWT_REFRESH_REMEMBER_EXPIRES_IN = '30d';
 const JWT_REMEMBER_EXPIRES_IN = '30d';
 const JWT_SESSION_EXPIRES_IN = '30m';
 const JWT_REFRESH_SESSION_EXPIRES_IN = '30m';
-const FORGOT_PASSWORD_MESSAGE =
-  'If an account exists for this email, a password reset link has been sent.';
+const FORGOT_PASSWORD_MESSAGE = 'A password reset link has been sent to your email.';
 
 export type AuthUserResponse = {
   id: string;
@@ -981,8 +980,14 @@ export class AuthService {
     const email = dto.email.trim().toLowerCase();
     const user = await this.userRepository.findOne({ where: { email } });
 
-    if (!user?.passwordHash) {
-      return { message: FORGOT_PASSWORD_MESSAGE, email };
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This account does not have a password. Sign in with Google or GitHub instead.',
+      );
     }
 
     const rawToken = randomBytes(32).toString('hex');
