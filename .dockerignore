@@ -6,7 +6,6 @@ coverage
 .env
 .env.*
 !.env.example
-Dockerfile
 docker-compose.yml
 docker-compose*.yml
 *.md
@@ -18,3 +17,4 @@ uploads
 .npm
 .temp
 .tmp
+*.tsbuildinfo
