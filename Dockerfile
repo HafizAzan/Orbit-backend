@@ -1,12 +1,18 @@
 FROM node:22-alpine AS builder
+
 RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
+RUN npm run build \
+  && test -f dist/main.js \
+  && test -f dist/config/database.js \
+  && test -f dist/app.module.js \
+  && ls -la dist/config
 RUN npm prune --omit=dev
 
 FROM node:22-alpine AS runner
